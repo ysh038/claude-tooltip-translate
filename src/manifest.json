@@ -1,18 +1,26 @@
 {
   "manifest_version": 3,
   "name": "Claude 툴팁 번역",
-  "version": "1.0.0",
-  "description": "단어에 마우스를 올리거나 드래그하면 Claude API로 문맥에 맞게 번역합니다.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.anthropic.com/*"],
+  "version": "0.0.0",
+  "description": "단어에 마우스를 올리거나 드래그하면 문맥에 맞게 번역합니다.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }
@@ -34,7 +42,9 @@
   },
   "commands": {
     "toggle-hover": {
-      "suggested_key": { "default": "Alt+Shift+H" },
+      "suggested_key": {
+        "default": "Alt+Shift+H"
+      },
       "description": "마우스 오버 번역 켜기/끄기"
     }
   }

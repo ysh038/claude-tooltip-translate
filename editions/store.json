@@ -1,0 +1,6 @@
+{
+  "name": "store",
+  "providers": ["anthropic-api", "chrome-builtin"],
+  "defaults": {},
+  "manifest": {}
+}

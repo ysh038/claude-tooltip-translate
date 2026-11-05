@@ -4,9 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "node tests/e2e.mjs"
+    "build": "node scripts/build.mjs",
+    "build:personal": "node scripts/build.mjs personal",
+    "build:store": "node scripts/build.mjs store",
+    "dev": "node scripts/build.mjs personal --watch",
+    "check:store": "node scripts/check-store.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "test": "npm run check:store && npm run test:e2e"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "playwright": "^1.48.0"
   }
 }

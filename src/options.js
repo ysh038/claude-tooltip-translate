@@ -1,8 +1,12 @@
-import { DEFAULTS, LANGS } from './settings.js';
+import { DEFAULTS, LANGS, EDITION } from '../core/settings.js';
+import { PROVIDERS, engineFor } from '../core/engines.js';
+import { listModels } from '../providers/anthropic-api.js';
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = ['apiKey', 'model', 'targetLang', 'fallbackLang', 'hoverEnabled', 'hoverModifier', 'hoverDelay',
-  'hoverSkipTarget', 'showAlternatives', 'selectionEnabled', 'selectionMode', 'contextMode'];
+  'hoverSkipTarget', 'showAlternatives', 'selectionEnabled', 'selectionMode', 'contextMode',
+  'hoverEngine', 'selectionEngine'];
+const ENGINE_FIELDS = { hoverEngine: 'hover', selectionEngine: 'selection' };
 const PRESET_MODELS = ['claude-haiku-4-5', 'claude-sonnet-4-5'];
 
 let savedTimer = 0;
@@ -15,6 +19,25 @@ function flashSaved() {
 function fillLangs() {
   for (const id of ['targetLang', 'fallbackLang']) {
     $(id).innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+  }
+}
+
+function fillEngines() {
+  for (const id of Object.keys(ENGINE_FIELDS)) {
+    $(id).innerHTML = PROVIDERS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
+  }
+}
+
+// 선택된 엔진이 지금 쓸 수 있는 상태인지 표시
+async function refreshEngineStatus() {
+  const s = await chrome.storage.local.get(DEFAULTS);
+  for (const [id, source] of Object.entries(ENGINE_FIELDS)) {
+    const p = engineFor(source, s);
+    if ($(id).value !== p.id) $(id).value = p.id; // 이 에디션에 없는 엔진이 저장돼 있던 경우
+    const st = $(id + 'Status');
+    const av = await p.available(s).catch((e) => ({ ok: false, reason: e.message }));
+    st.textContent = av.ok ? '사용 가능' : '⚠ ' + av.reason;
+    st.className = av.ok ? 'ok' : 'err';
   }
 }
 
@@ -32,7 +55,9 @@ function readField(id) {
 }
 
 async function init() {
+  document.body.dataset.edition = EDITION.name;
   fillLangs();
+  fillEngines();
   const s = await chrome.storage.local.get({ ...DEFAULTS, modelList: [] });
   fillModels(s.modelList, s.model);
   for (const id of FIELDS) {
@@ -50,8 +75,10 @@ async function init() {
       if (id === 'hoverDelay') $('hoverDelayVal').textContent = el.value + 'ms';
       await chrome.storage.local.set({ [id]: readField(id) });
       flashSaved();
+      if (id in ENGINE_FIELDS || id === 'apiKey' || id === 'model') refreshEngineStatus();
     });
   }
+  await refreshEngineStatus();
 }
 
 $('toggleKey').addEventListener('click', () => {
@@ -67,14 +94,7 @@ $('loadModels').addEventListener('click', async () => {
   st.textContent = '확인 중…'; st.className = 'muted';
   try {
     const { apiBase } = await chrome.storage.local.get({ apiBase: DEFAULTS.apiBase });
-    const res = await fetch(`${apiBase}/v1/models?limit=100`, {
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error?.message || `HTTP ${res.status}`);
-    const ids = (j.data || []).map((m) => m.id);
-    // 빠른 모델(haiku)을 위로
-    ids.sort((a, b) => (b.includes('haiku') - a.includes('haiku')));
+    const ids = await listModels(key, apiBase);
     await chrome.storage.local.set({ modelList: ids });
     fillModels(ids, $('model').value);
     st.textContent = `연결 성공 · 사용 가능한 모델 ${ids.length}개를 불러왔습니다.`;
@@ -95,14 +115,15 @@ $('runTest').addEventListener('click', () => {
     if (m.type === 'delta') out.textContent = m.full;
     else if (m.type === 'done') {
       out.textContent = m.text;
-      meta.textContent = m.cached ? '캐시된 결과' : `첫 글자 ${m.ttft}ms · 전체 ${m.ms}ms · ${m.model}`;
+      const who = [m.engine, m.model].filter(Boolean).join(' · ');
+      meta.textContent = m.cached ? `캐시된 결과 · ${who}` : `첫 글자 ${m.ttft}ms · 전체 ${m.ms}ms · ${who}`;
       port.disconnect();
     } else if (m.type === 'error') {
       out.textContent = '⚠ ' + m.message;
       port.disconnect();
     }
   });
-  port.postMessage({ mode: /\s/.test(text) ? 'text' : 'word', text });
+  port.postMessage({ source: 'selection', mode: /\s/.test(text) ? 'text' : 'word', text });
 });
 
 init();

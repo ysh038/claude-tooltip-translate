@@ -3,10 +3,12 @@
 단어에 마우스를 올리거나 텍스트를 드래그하면 Claude API로 **문맥에 맞게** 번역해 툴팁으로 보여줍니다.
 
 ## 설치
-1. 압축을 풉니다.
+1. `npm i` 후 `npm run build:personal` (상업용은 `npm run build:store`)
 2. Chrome에서 `chrome://extensions` → 오른쪽 위 **개발자 모드** 켜기
-3. **압축해제된 확장 프로그램을 로드합니다** → 압축 푼 `claude-tooltip-translate` 폴더 선택
+3. **압축해제된 확장 프로그램을 로드합니다** → `dist/personal` 폴더 선택
+   - 개발 중에는 `npm run dev`(watch)를 켜 두고, 코드 수정 후 확장 카드의 새로고침 버튼
 4. 설정 페이지가 자동으로 열리면 API 키 입력 → **연결 테스트 · 모델 불러오기** → 모델 선택
+   - **번역 엔진**에서 마우스 오버 / 드래그 엔진을 따로 고를 수 있습니다 (Chrome 내장 번역·claude -p는 준비 중)
    (Edge, Whale, Arc 등 Chromium 브라우저에서도 같은 방법으로 설치됩니다.)
 
 ## 사용법
@@ -30,6 +32,14 @@
 | 최대 속도 | Haiku 모델 · "다른 뜻 표시" 끄기 · 대기 시간 줄이기 |
 | 오역 최소 | 문맥 "앞뒤 ±350자" · Sonnet 모델 (느려짐) |
 | 실수로 뜨는 툴팁 방지 | 트리거를 "Alt 누른 채로"로 변경 |
+
+## 개발
+| 명령 | 하는 일 |
+|---|---|
+| `npm run build` | 모든 에디션 빌드 → `dist/<에디션>` |
+| `npm run dev` | 개인용 watch 빌드 |
+| `npm run check:store` | store 빌드에 개인용 전용 코드(claude-cli, nativeMessaging)가 없는지 검사 |
+| `npm test` | check:store + e2e (처음 한 번 `npx playwright install chromium`) |
 
 ## 참고
 - API 키는 `chrome.storage.local`(이 브라우저)에만 저장되고, 요청은 확장 프로그램 백그라운드에서 `api.anthropic.com`으로 직접 보냅니다.

@@ -17,7 +17,21 @@
   </header>
 
   <section>
-    <h2>API</h2>
+    <h2>번역 엔진</h2>
+    <div class="grid2">
+      <label class="row col"><span>① 마우스 오버</span>
+        <select id="hoverEngine"></select>
+        <small id="hoverEngineStatus" class="muted"></small>
+      </label>
+      <label class="row col"><span>② 드래그(선택)</span>
+        <select id="selectionEngine"></select>
+        <small id="selectionEngineStatus" class="muted"></small>
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Claude API</h2>
     <label class="row col">
       <span>Claude API 키</span>
       <div class="inline">
@@ -90,6 +104,7 @@
   <section>
     <h2>테스트</h2>
     <textarea id="testText" rows="2">She sat on the bank of the river and watched the boats drift by.</textarea>
+    <p class="muted small">드래그(선택) 엔진으로 번역합니다.</p>
     <div class="inline">
       <button id="runTest" type="button">번역해 보기</button>
       <small id="testMeta" class="muted"></small>

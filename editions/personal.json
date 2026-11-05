@@ -1,0 +1,9 @@
+{
+  "name": "personal",
+  "providers": ["anthropic-api", "chrome-builtin", "claude-cli"],
+  "defaults": {},
+  "manifest": {
+    "name": "Claude 툴팁 번역 (개인용)",
+    "permissions": ["nativeMessaging"]
+  }
+}

@@ -8,13 +8,27 @@
 - 속도가 최우선. 단, 다의어는 앞뒤 문맥을 보고 적절히 의역해야 함 → 속도와 의역 품질의 균형이 핵심 설계 포인트
 - UI 문구는 한국어. 기본 번역 방향: → 한국어 (이미 한국어면 → 영어)
 
-## 현재 상태 (v1.0.0, 동작 확인됨)
-- `manifest.json` MV3 / `background.js` 서비스워커: Anthropic Messages API **스트리밍** 호출, LRU 캐시(memory + storage.session), port 1개 = 요청 1개(disconnect 시 abort)
-- `content.js`: Shadow DOM 툴팁, `caretPositionFromPoint` + `Intl.Segmenter`로 단어 감지, 문맥 추출(문장/±350자, 대상은 `⟦ ⟧`로 표시), hover/선택 처리
-- `options.html/js`, `popup.html/js`, `settings.js`(공용 DEFAULTS), `ui.css`, `icons/`
-- `settings.js`의 `apiBase`는 UI에 노출 안 된 테스트용 오버라이드
-- `tests/e2e.mjs`: 가짜 SSE 서버 + Playwright로 hover/드래그/더블클릭/캐시/옵션 테스트 검증 완료
+## 현재 상태 (0단계 완료: provider 구조 + 에디션 빌드)
+```
+src/        확장 진입점·정적 파일: background.js, content.js, options.*, popup.*, ui.css, icons/, manifest.json(베이스)
+core/       settings.js(DEFAULTS·EDITION), prompts.js, provider.js(인터페이스·ProviderError), engines.js(선택 로직), cache.js
+providers/  anthropic-api.js(구현됨), chrome-builtin.js·claude-cli.js(1단계용 자리, available()=false)
+editions/   personal.json, store.json — providers 목록, manifest 덮어쓰기, 기본 설정
+scripts/    build.mjs(esbuild → dist/<에디션>), check-store.mjs, edition-rules.mjs(개인용 전용 목록)
+tests/      e2e.mjs
+```
+- **확장 로드는 루트가 아니라 `dist/personal`** (`npm run build:personal`, 개발 중엔 `npm run dev`로 watch)
+- 빌드: `src/*.js`를 esbuild로 번들. background/options/popup은 ESM, content는 IIFE. `__EDITION__`은 define으로 치환, `edition:providers`는 에디션 providers만 import하는 가상 모듈 → store 번들엔 claude-cli 코드가 물리적으로 없음
+- 에디션 manifest = `src/manifest.json` + `editions/<이름>.json`의 `manifest`(permissions는 합집합) + `package.json` version
+- background: port 1개 = 요청 1개(disconnect 시 abort). 요청 `{source:'hover'|'selection', mode, text, context, title}` → `engineFor(source)`로 provider 선택 → `available()` → 캐시(키에 provider id·cacheTag 포함) → `translate()`
+- 설정 `hoverEngine` / `selectionEngine`: 저장된 id가 에디션에 없으면 첫 provider로 대체. 옵션 페이지에 엔진 선택 + 사용 가능 여부 표시
+- content.js는 `CONTENT_KEYS`만 읽음(API 키를 content script로 가져가지 않음)
+- 오류는 provider가 `ProviderError(message, {code, needsSetup})`로 던짐. `needsSetup`이면 툴팁에 "설정 열기"
+- `apiBase`는 UI에 노출 안 된 테스트용 오버라이드
+- 검사: `npm run check:store`(store 빌드 후 nativeMessaging·manifest key·`claude-cli`/`connectNative`/`claude -p` 문자열 검사). `build.mjs`도 store 에디션에 개인용 전용 provider가 있으면 빌드 거부
+- `npm test` = check:store + e2e. e2e는 personal·store 두 빌드 각각에 대해 가짜 SSE 서버 + Playwright로 hover/드래그/더블클릭/캐시/엔진 분리/옵션/팝업 검증 (32개)
   - 확장 로드 시 headless는 `channel: 'chromium'` 필요
+- CI 설정 파일은 아직 없음 → 원격 저장소 생기면 `npm ci && npx playwright install chromium && npm test`
 - **실제 Anthropic API 키로는 아직 테스트 안 함**
 
 ## 확정된 결정

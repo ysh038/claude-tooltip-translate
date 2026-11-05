@@ -1,12 +1,11 @@
+import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.js';
+
 (() => {
   if (window.__claudeTipLoaded) return;
   window.__claudeTipLoaded = true;
 
   /* ───────────── 설정 ───────────── */
-  const DEFAULTS = {
-    hoverEnabled: true, hoverModifier: 'none', hoverDelay: 450, hoverSkipTarget: true,
-    selectionEnabled: true, selectionMode: 'auto', contextMode: 'sentence', targetLang: 'ko'
-  };
+  const DEFAULTS = pick(ALL_DEFAULTS, CONTENT_KEYS);
   let S = { ...DEFAULTS };
   try {
     chrome.storage.local.get(DEFAULTS, (v) => { S = { ...S, ...v }; });
@@ -138,12 +137,12 @@
     schedulePlace();
   }
 
-  function showError(message, code) {
+  function showError(message, needsSetup) {
     elBody.textContent = '';
     const d = document.createElement('div');
     d.className = 'err'; d.textContent = message;
     elBody.appendChild(d);
-    if (code === 'NO_KEY' || code === 401 || code === 404) {
+    if (needsSetup) {
       const b = document.createElement('button');
       b.className = 'link'; b.textContent = '설정 열기';
       b.addEventListener('click', () => { try { chrome.runtime.sendMessage({ type: 'openOptions' }); } catch {} });
@@ -200,17 +199,18 @@
       else if (m.type === 'done') {
         tip.text = m.text; tip.done = true; render();
         elMeta.textContent = m.cached ? '캐시' : `${(m.ttft / 1000).toFixed(1)}s / ${(m.ms / 1000).toFixed(1)}s`;
-        elMeta.title = m.cached ? '이전 결과 재사용' : '첫 글자 / 전체 시간 · ' + (m.model || '');
+        const who = [m.engine, m.model].filter(Boolean).join(' · ');
+        elMeta.title = (m.cached ? '이전 결과 재사용' : '첫 글자 / 전체 시간') + (who ? ' · ' + who : '');
         try { port.disconnect(); } catch {}
         tip.port = null;
       } else if (m.type === 'error') {
-        showError(m.message, m.code);
+        showError(m.message, m.needsSetup);
         try { port.disconnect(); } catch {}
         tip.port = null;
       }
     });
     port.onDisconnect.addListener(() => { void chrome.runtime.lastError; });
-    port.postMessage({ mode, text, context, title: (document.title || '').slice(0, 100) });
+    port.postMessage({ source: src, mode, text, context, title: (document.title || '').slice(0, 100) });
   }
 
   /* ───────────── 텍스트/문맥 유틸 ───────────── */

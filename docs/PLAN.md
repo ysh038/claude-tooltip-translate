@@ -3,7 +3,8 @@
 ## 목표 구조
 ```
 claude-tooltip-translate/
-├─ core/                 공통: 툴팁 UI, 문맥 추출, 프롬프트, 캐시, provider 인터페이스
+├─ src/                  확장 진입점(background/content/options/popup) + 정적 파일
+├─ core/                 공통: 설정, 프롬프트, 캐시, provider 인터페이스, 엔진 선택
 ├─ providers/
 │  ├─ chrome-builtin     Chrome 내장 Translator (무료·즉시, 직역)
 │  ├─ claude-cli         claude -p 중계 (개인용 전용)
@@ -13,17 +14,18 @@ claude-tooltip-translate/
 ├─ editions/
 │  ├─ personal.json      providers: chrome-builtin, claude-cli, anthropic-api / permissions: + nativeMessaging
 │  └─ store.json         providers: chrome-builtin, anthropic-api, openai, gemini
+├─ scripts/              build.mjs, check-store.mjs
 └─ tests/
 ```
 
 ## 0단계 — 구조 정리 (반나절)
-- [ ] git 저장소 초기화, 현재 v1.0.0을 첫 커밋 + `personal-v1.0.0` 태그
-- [ ] 빌드 도구 도입(esbuild 권장) + 에디션별 manifest 생성 → `dist/personal`, `dist/store`
-- [ ] provider 인터페이스 정의: `translate({mode, text, context, title}, {signal, onDelta}) → Promise<string>`, `available()`, `id/label`
-- [ ] 기존 Anthropic 호출을 `providers/anthropic-api`로 이동, 프롬프트는 `core/prompts`로
-- [ ] 설정에 "hover 엔진 / 드래그 엔진" 선택 추가
-- [ ] store 빌드에 `claude-cli`·`nativeMessaging`이 없는지 검사하는 스크립트(CI용)
-- [ ] e2e 테스트를 새 구조에 맞게 갱신
+- [x] git 저장소 초기화, 현재 v1.0.0을 첫 커밋 + `personal-v1.0.0` 태그
+- [x] 빌드 도구 도입(esbuild) + 에디션별 manifest 생성 → `dist/personal`, `dist/store`
+- [x] provider 인터페이스 정의: `translate({mode, text, context, title}, {signal, onDelta}) → Promise<string>`, `available()`, `id/label`
+- [x] 기존 Anthropic 호출을 `providers/anthropic-api`로 이동, 프롬프트는 `core/prompts`로
+- [x] 설정에 "hover 엔진 / 드래그 엔진" 선택 추가
+- [x] store 빌드에 `claude-cli`·`nativeMessaging`이 없는지 검사하는 스크립트(CI용) — `npm run check:store`
+- [x] e2e 테스트를 새 구조에 맞게 갱신 (personal·store 각각)
 
 ## 1단계 — 개인용 엔진 (1~2일)
 - [ ] `native-host/`: Node 스크립트 + host manifest + 설치 스크립트(`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`)
