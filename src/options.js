@@ -41,6 +41,32 @@ async function refreshEngineStatus() {
   }
 }
 
+// provider가 선언한 전용 설정을 섹션으로 그린다
+function renderProviderSettings(s) {
+  const box = $('providerSettings');
+  for (const p of PROVIDERS) {
+    if (!p.settings?.length && !p.help) continue;
+    const sec = document.createElement('section');
+    sec.dataset.provider = p.id;
+    const h = document.createElement('h2'); h.textContent = p.label; sec.append(h);
+    if (p.help) { const d = document.createElement('p'); d.className = 'muted small'; d.textContent = p.help; sec.append(d); }
+    for (const f of p.settings || []) {
+      const label = document.createElement('label'); label.className = 'row col';
+      const span = document.createElement('span'); span.textContent = f.label;
+      const sel = document.createElement('select'); sel.id = f.key;
+      for (const [v, l] of f.choices) sel.add(new Option(l, v));
+      sel.value = s[f.key];
+      sel.addEventListener('change', async () => {
+        await chrome.storage.local.set({ [f.key]: sel.value });
+        flashSaved();
+        refreshEngineStatus();
+      });
+      label.append(span, sel); sec.append(label);
+    }
+    box.append(sec);
+  }
+}
+
 function fillModels(list, current) {
   const ids = [...new Set([...(list || []), ...PRESET_MODELS, current].filter(Boolean))];
   $('model').innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join('');
@@ -60,6 +86,7 @@ async function init() {
   fillEngines();
   const s = await chrome.storage.local.get({ ...DEFAULTS, modelList: [] });
   fillModels(s.modelList, s.model);
+  renderProviderSettings(s);
   for (const id of FIELDS) {
     const el = $(id);
     if (el.type === 'checkbox') el.checked = s[id];

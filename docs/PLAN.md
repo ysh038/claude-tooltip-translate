@@ -10,7 +10,7 @@ claude-tooltip-translate/
 │  ├─ claude-cli         claude -p 중계 (개인용 전용)
 │  ├─ anthropic-api      API 키 (현재 구현)
 │  └─ openai, gemini     상업용 단계에서 추가
-├─ native-host/          macOS native messaging host: claude -p 상주 (개인용 전용)
+├─ native-host/          macOS native messaging host: claude -p 프로세스 풀 (개인용 전용)
 ├─ editions/
 │  ├─ personal.json      providers: chrome-builtin, claude-cli, anthropic-api / permissions: + nativeMessaging
 │  └─ store.json         providers: chrome-builtin, anthropic-api, openai, gemini
@@ -28,10 +28,12 @@ claude-tooltip-translate/
 - [x] e2e 테스트를 새 구조에 맞게 갱신 (personal·store 각각)
 
 ## 1단계 — 개인용 엔진 (1~2일)
-- [ ] `native-host/`: Node 스크립트 + host manifest + 설치 스크립트(`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`)
-  - `claude -p` 상주(stream-json 입출력), 요청 큐, N회마다 재시작, 실패 시 재기동
+- [x] `native-host/`: Node 스크립트 + host manifest + 설치 스크립트(`npm run host:install`, Chrome·Edge·Brave·Arc·Whale 등)
+  - ~~상주 + N회마다 재시작~~ → 요청마다 프로세스 1개 + 대기 프로세스 미리 띄우기 (CLAUDE.md 결정 6)
   - 확장 ID 고정을 위해 manifest에 `key` 넣기(개인용)
-- [ ] `providers/claude-cli`: `chrome.runtime.connectNative`로 스트리밍 수신
+- [x] `providers/claude-cli`: `chrome.runtime.connectNative`로 스트리밍 수신, 개인용 기본 엔진
+- [ ] 실제 Chrome에 설치해서 사용 (`npm run host:install` — 사용자가 직접 실행)
+- [ ] 구독 한도 상태(rate_limit_event) 표시
 - [ ] `providers/chrome-builtin`: Translator API (content script에서 직접 되는지, 안 되면 offscreen document) 확인
 - [ ] hover 2단계 표시: 내장 번역 즉시 → claude 결과 오면 교체 (UI에 단계 표시)
 - [ ] 사용량 표시(오늘 요청 수), 지연 시간 기록

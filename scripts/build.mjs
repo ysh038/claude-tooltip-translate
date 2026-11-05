@@ -80,7 +80,7 @@ export async function build(name, { outdir = path.join(ROOT, 'dist', name), watc
     charset: 'utf8',
     legalComments: 'none',
     logLevel: quiet ? 'silent' : 'warning',
-    define: { __EDITION__: JSON.stringify({ name: cfg.name, providers: cfg.providers, defaults: cfg.defaults || {} }) },
+    define: { __EDITION__: JSON.stringify({ name: cfg.name, providers: cfg.providers, defaults: cfg.defaults || {}, nativeHost: cfg.nativeHost || null }) },
     plugins: [editionPlugin(cfg)]
   };
   const configs = [

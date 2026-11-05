@@ -7,12 +7,13 @@ import os from 'node:os';
 import { chromium } from 'playwright';
 import { build, EDITIONS, loadEdition } from '../scripts/build.mjs';
 import { checkStore } from '../scripts/check-store.mjs';
+import { hostManifest, personalEdition, writeRunScript } from '../native-host/install.mjs';
 
 const PORT = 8787;
 const SP = fs.mkdtempSync(path.join(os.tmpdir(), 'ctt-e2e-'));
 let failed = 0;
 let prefix = '';
-const check = (name, ok) => { console.log((ok ? 'PASS ' : 'FAIL ') + prefix + name); if (!ok) failed++; };
+const check = (name, ok, extra = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + prefix + name + (ok || !extra ? '' : '  ' + extra)); if (!ok) failed++; };
 
 let log = [];
 const server = http.createServer((req, res) => {
@@ -45,14 +46,36 @@ async function buildForTest(edition) {
   return dir;
 }
 
+// 프로필 폴더에 native host 등록 (Chromium은 <user-data-dir>/NativeMessagingHosts를 읽음) — 가짜 claude 사용
+function installTestHost(profile) {
+  const fake = path.join(path.dirname(new URL(import.meta.url).pathname), 'fake-claude.mjs');
+  fs.chmodSync(fake, 0o755);
+  const runPath = path.join(SP, 'run-host.sh');
+  writeRunScript(runPath, { nodeBin: process.execPath, env: {
+    CTT_CLAUDE_BIN: fake, CTT_HOST_LOG: '0', FAKE_CLAUDE_LOG: path.join(SP, 'fake-claude.log'),
+    PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`
+  } });
+  const { name, extId } = personalEdition();
+  const dir = path.join(profile, 'NativeMessagingHosts');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(hostManifest({ name, runPath, extId })));
+  return extId;
+}
+const fakeClaudeCalls = () => { try { return fs.readFileSync(path.join(SP, 'fake-claude.log'), 'utf8').split('\n').filter((l) => l.includes('"msg"')).length; } catch { return 0; } };
+
 async function runSuite(edition) {
   prefix = `[${edition}] `;
   log = [];
   const ext = await buildForTest(edition);
-  const ctx = await chromium.launchPersistentContext(path.join(SP, 'profile-' + edition), { headless: true, channel: 'chromium', args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`], viewport: { width: 1000, height: 600 } });
+  const profile = path.join(SP, 'profile-' + edition);
+  const hasCli = loadEdition(edition).providers.includes('claude-cli');
+  const expectId = hasCli ? installTestHost(profile) : null;
+  const ctx = await chromium.launchPersistentContext(profile, { headless: true, channel: 'chromium', args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`], viewport: { width: 1000, height: 600 } });
   try {
     let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('serviceworker');
-    await sw.evaluate((port) => chrome.storage.local.set({ apiKey: 'test-key', apiBase: `http://localhost:${port}` }), PORT);
+    if (expectId) check('personal build has fixed extension ID', sw.url().split('/')[2] === expectId);
+    // 공통 테스트는 Claude API(가짜 SSE 서버)로
+    await sw.evaluate((port) => chrome.storage.local.set({ apiKey: 'test-key', apiBase: `http://localhost:${port}`, hoverEngine: 'anthropic-api', selectionEngine: 'anthropic-api' }), PORT);
     const page = (await ctx.pages())[0] || await ctx.newPage();
     await page.goto(`http://localhost:${PORT}/`);
     await page.waitForTimeout(500);
@@ -124,6 +147,29 @@ async function runSuite(edition) {
     check('options saves engine choice', st.selectionEngine === 'chrome-builtin' && (await op.textContent('#selectionEngineStatus')).includes('준비 중'));
     const pp = await ctx.newPage(); await pp.setViewportSize({ width: 280, height: 200 }); await pp.goto(`chrome-extension://${extId}/popup.html`); await pp.waitForTimeout(300);
     check('popup warns about unavailable engine', (await pp.textContent('#status')).includes('준비 중'));
+
+    if (hasCli) {
+      // claude -p 엔진 (native host + 가짜 claude). 저장값을 지우면 개인용 기본값(claude-cli)으로
+      await sw.evaluate(() => chrome.storage.local.remove(['hoverEngine', 'selectionEngine']));
+      await op.reload(); await op.waitForTimeout(1500);
+      check('claude-cli is default engine in personal', (await op.inputValue('#hoverEngine')) === 'claude-cli' && (await op.inputValue('#selectionEngine')) === 'claude-cli');
+      check('claude-cli available via native host', (await op.textContent('#hoverEngineStatus')).includes('사용 가능'));
+      check('claude-cli settings section rendered', (await op.inputValue('#cliModel')) === 'haiku');
+      await page.bringToFront();
+      const nApi = log.length, nCli = fakeClaudeCalls();
+      await page.mouse.click(900, 550); await page.waitForTimeout(200);
+      await hoverBank(1500);
+      const ch = await tipText();
+      check('hover via claude -p', !ch.hidden && ch.body.startsWith('강둑') && log.length === nApi && fakeClaudeCalls() === nCli + 1, JSON.stringify(ch));
+      await moveAway();
+      await page.mouse.move(p.x + 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 500, p.y + p.height / 2, { steps: 5 }); await page.mouse.up();
+      await page.waitForTimeout(1500);
+      const cs = await tipText();
+      check('selection via claude -p', !cs.hidden && cs.body.includes('강둑') && log.length === nApi);
+      await page.mouse.click(900, 550);
+      const cp = await ctx.newPage(); await cp.setViewportSize({ width: 280, height: 200 }); await cp.goto(`chrome-extension://${extId}/popup.html`); await cp.waitForTimeout(800);
+      check('popup shows claude -p engine', (await cp.textContent('#status')).includes('claude -p'));
+    }
   } finally {
     await ctx.close();
   }

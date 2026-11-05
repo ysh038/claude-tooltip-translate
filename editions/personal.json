@@ -1,9 +1,21 @@
 {
   "name": "personal",
-  "providers": ["anthropic-api", "chrome-builtin", "claude-cli"],
-  "defaults": {},
+  "providers": [
+    "anthropic-api",
+    "chrome-builtin",
+    "claude-cli"
+  ],
+  "defaults": {
+    "hoverEngine": "claude-cli",
+    "selectionEngine": "claude-cli",
+    "cliModel": "haiku"
+  },
   "manifest": {
     "name": "Claude 툴팁 번역 (개인용)",
-    "permissions": ["nativeMessaging"]
-  }
+    "permissions": [
+      "nativeMessaging"
+    ],
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqliXemWJejxyCEPsYP248BNSOlUcsdQw2LRQwXE9o7kGW2y3gPC9MKRpEOLtTnbJJowk1jHILDdYLjZEANMPIH2UJfvXqhGysQUL7F+QlnyiRgYw5OFjyx7qxrMWv5ZWKM2iry4vMH0MgsQ329Vuy7xaLroucbhDodO7a291qPpT8Ya0eI2NucwmtVCr8LYy4cGce5L3PYOPChrWKTJSmHqdzT0YlMRm4G6f9Scv5mqBE08N/6OCtT0fMFgJv52x1b+wLtMzEMYSTXlBTkpvJJuPmjrxb8MaiYDzXmkmQXmRBhq1Wzs3DbQ34fRugekB1iz84EuSfYTCECC3dUi84wIDAQAB"
+  },
+  "nativeHost": "dev.claude_tooltip_translate.cli"
 }

@@ -7,8 +7,14 @@
 2. Chrome에서 `chrome://extensions` → 오른쪽 위 **개발자 모드** 켜기
 3. **압축해제된 확장 프로그램을 로드합니다** → `dist/personal` 폴더 선택
    - 개발 중에는 `npm run dev`(watch)를 켜 두고, 코드 수정 후 확장 카드의 새로고침 버튼
-4. 설정 페이지가 자동으로 열리면 API 키 입력 → **연결 테스트 · 모델 불러오기** → 모델 선택
-   - **번역 엔진**에서 마우스 오버 / 드래그 엔진을 따로 고를 수 있습니다 (Chrome 내장 번역·claude -p는 준비 중)
+4. **개인용 기본 엔진은 claude -p(본인 Claude 구독)** 입니다. 처음 한 번 터미널에서:
+   ```bash
+   npm run host:install
+   ```
+   Claude Code(`claude`)가 설치·로그인되어 있어야 합니다. 그다음 확장을 새로고침하면 설정 페이지 **번역 엔진**에 "사용 가능"이 뜹니다.
+   - 터미널에서 바로 확인: `npm run host:test -- "She sat on the bank of the river."`
+   - 제거: `npm run host:uninstall`
+5. API 키를 쓰려면 설정의 **번역 엔진**을 "Claude API"로 바꾸고 API 키 입력 → **연결 테스트 · 모델 불러오기**
    (Edge, Whale, Arc 등 Chromium 브라우저에서도 같은 방법으로 설치됩니다.)
 
 ## 사용법
@@ -39,7 +45,8 @@
 | `npm run build` | 모든 에디션 빌드 → `dist/<에디션>` |
 | `npm run dev` | 개인용 watch 빌드 |
 | `npm run check:store` | store 빌드에 개인용 전용 코드(claude-cli, nativeMessaging)가 없는지 검사 |
-| `npm test` | check:store + e2e (처음 한 번 `npx playwright install chromium`) |
+| `npm test` | check:store + host 단위 테스트 + e2e (처음 한 번 `npx playwright install chromium`) |
+| `npm run host:install` | claude -p 중계 프로그램 등록 (개인용) |
 
 ## 참고
 - API 키는 `chrome.storage.local`(이 브라우저)에만 저장되고, 요청은 확장 프로그램 백그라운드에서 `api.anthropic.com`으로 직접 보냅니다.

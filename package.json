@@ -10,7 +10,11 @@
     "dev": "node scripts/build.mjs personal --watch",
     "check:store": "node scripts/check-store.mjs",
     "test:e2e": "node tests/e2e.mjs",
-    "test": "npm run check:store && npm run test:e2e"
+    "test": "npm run check:store && npm run test:host && npm run test:e2e",
+    "host:install": "node native-host/install.mjs",
+    "host:uninstall": "node native-host/install.mjs --uninstall",
+    "host:test": "node native-host/host.mjs --selftest",
+    "test:host": "node tests/host.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
