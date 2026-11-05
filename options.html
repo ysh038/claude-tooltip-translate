@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Claude 툴팁 번역 · 설정</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body class="options">
+<main>
+  <header>
+    <img src="icons/icon48.png" alt="" width="32" height="32">
+    <div>
+      <h1>Claude 툴팁 번역</h1>
+      <p class="muted">설정은 바뀌는 즉시 저장됩니다. API 키는 이 브라우저에만 저장됩니다.</p>
+    </div>
+    <span id="saved" class="saved" hidden>저장됨</span>
+  </header>
+
+  <section>
+    <h2>API</h2>
+    <label class="row col">
+      <span>Claude API 키</span>
+      <div class="inline">
+        <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+        <button id="toggleKey" type="button" class="ghost">보기</button>
+      </div>
+    </label>
+    <label class="row col">
+      <span>모델 <small class="muted">— 속도가 중요하면 Haiku 계열 권장</small></span>
+      <div class="inline">
+        <select id="model"></select>
+        <button id="loadModels" type="button">연결 테스트 · 모델 불러오기</button>
+      </div>
+      <small id="keyStatus" class="muted"></small>
+    </label>
+  </section>
+
+  <section>
+    <h2>언어</h2>
+    <div class="grid2">
+      <label class="row col"><span>번역할 언어</span><select id="targetLang"></select></label>
+      <label class="row col"><span>이미 그 언어일 때 대신 번역할 언어</span><select id="fallbackLang"></select></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>① 마우스 오버 번역</h2>
+    <label class="row switch"><input id="hoverEnabled" type="checkbox"><span>사용 <small class="muted">(단축키 Alt+Shift+H로 켜기/끄기)</small></span></label>
+    <div class="grid2">
+      <label class="row col"><span>트리거</span>
+        <select id="hoverModifier">
+          <option value="none">마우스를 올리고 잠시 멈추면</option>
+          <option value="alt">Alt(⌥) 누른 채로 올리면</option>
+          <option value="shift">Shift 누른 채로 올리면</option>
+          <option value="ctrl">Ctrl 누른 채로 올리면</option>
+          <option value="meta">⌘ / Win 누른 채로 올리면</option>
+        </select>
+      </label>
+      <label class="row col"><span>대기 시간 <b id="hoverDelayVal"></b> <small class="muted">(멈춘 뒤 번역 시작까지)</small></span>
+        <input id="hoverDelay" type="range" min="150" max="1500" step="50">
+      </label>
+    </div>
+    <label class="row switch"><input id="hoverSkipTarget" type="checkbox"><span>번역할 언어로 된 단어(예: 한글)는 무시</span></label>
+    <label class="row switch"><input id="showAlternatives" type="checkbox"><span>문맥상 뜻 외에 다른 뜻도 함께 표시 <small class="muted">(끄면 조금 더 빠름)</small></span></label>
+  </section>
+
+  <section>
+    <h2>② 드래그(선택) 번역</h2>
+    <label class="row switch"><input id="selectionEnabled" type="checkbox"><span>사용</span></label>
+    <label class="row col"><span>동작</span>
+      <select id="selectionMode">
+        <option value="auto">드래그하면 바로 번역</option>
+        <option value="button">드래그 후 [번역] 버튼을 눌러야 번역</option>
+      </select>
+    </label>
+  </section>
+
+  <section>
+    <h2>문맥 반영 (의역 품질 ↔ 속도)</h2>
+    <label class="row col"><span>앞뒤 문맥을 얼마나 함께 보낼지</span>
+      <select id="contextMode">
+        <option value="none">보내지 않음 — 가장 빠름, 다의어 오역 가능</option>
+        <option value="sentence">해당 문장 — 권장 (속도 차이 거의 없음)</option>
+        <option value="paragraph">앞뒤 ±350자 — 문맥 최대, 약간 느려질 수 있음</option>
+      </select>
+    </label>
+    <p class="muted small">문맥은 입력 토큰으로만 들어가서 응답 속도에 미치는 영향이 작습니다. 속도는 주로 모델과 출력 길이에 좌우됩니다.</p>
+  </section>
+
+  <section>
+    <h2>테스트</h2>
+    <textarea id="testText" rows="2">She sat on the bank of the river and watched the boats drift by.</textarea>
+    <div class="inline">
+      <button id="runTest" type="button">번역해 보기</button>
+      <small id="testMeta" class="muted"></small>
+    </div>
+    <pre id="testOut"></pre>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>
