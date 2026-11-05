@@ -68,6 +68,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 | 같은 옵션, **미리 띄워 둔 프로세스**에 요청 | 첫 글자 0.6s / 완성 0.8~1.0s |
 | 확장 전체 경로(임시 프로필, 실제 claude, haiku) hover | 멈춘 뒤 표시까지 ~1.5s (hover 대기 0.45s 포함) |
 | 확장 전체 경로 드래그 | ~1.3s |
+| **실제 Chrome**(사용자 프로필) 첫 4건, host.log 기준 | 첫 글자 0.7~1.7s(한 번 3.1s) / 완성 1.3~3.1s, 모두 대기 프로세스 사용 |
 → 대기 프로세스를 쓰면 API 직접 호출과 비슷. hover에도 쓸 만함 (Chrome 내장 번역 2단계 표시는 선택 사항으로 남김)
 → 한 프로세스에 연속으로 보내면 답 뒤 post_turn_summary 1.5s 때문에 처리량이 요청당 ~3s
 → 옵션 플래그 이름은 Claude Code 버전마다 다를 수 있으니 `claude --help`로 확인.
