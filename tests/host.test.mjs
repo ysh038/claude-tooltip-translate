@@ -118,6 +118,24 @@ try {
   check('missing claude → translate error NO_CLAUDE', err2?.code === 'NO_CLAUDE');
   h2.proc.stdin.end();
   await h2.exited;
+
+  // 3) 설치 스크립트 — 임시 HOME에 설치 후, 저장소 밖으로 복사된 host가 단독으로 동작하는지
+  const HOME = path.join(SP, 'home');
+  const AS = path.join(HOME, 'Library', 'Application Support');
+  fs.mkdirSync(path.join(AS, 'Google', 'Chrome'), { recursive: true });
+  const inst = spawn(process.execPath, [path.join(ROOT, 'native-host', 'install.mjs')], { env: { ...process.env, HOME }, stdio: 'pipe' });
+  let instOut = ''; inst.stdout.on('data', (d) => instOut += d); inst.stderr.on('data', (d) => instOut += d);
+  const instCode = await new Promise((r) => inst.on('exit', r));
+  const mfPath = path.join(AS, 'Google', 'Chrome', 'NativeMessagingHosts', 'dev.claude_tooltip_translate.cli.json');
+  const mf = fs.existsSync(mfPath) && JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+  check('install writes host manifest for Chrome', instCode === 0 && mf && mf.allowed_origins[0].startsWith('chrome-extension://'), instOut);
+  check('installed host lives outside the repo', mf && mf.path.startsWith(AS) && !mf.path.startsWith(ROOT));
+  const run = spawn(mf.path, [], { stdio: ['pipe', 'pipe', 'inherit'], env: { PATH: '/usr/bin:/bin', HOME } }); // Chrome처럼 최소 환경
+  const pingBody = Buffer.from(JSON.stringify({ type: 'ping' })); const ph = Buffer.alloc(4); ph.writeUInt32LE(pingBody.length, 0);
+  run.stdin.write(Buffer.concat([ph, pingBody]));
+  const reply = await new Promise((r) => { let b = Buffer.alloc(0); run.stdout.on('data', (c) => { b = Buffer.concat([b, c]); if (b.length >= 4 && b.length >= 4 + b.readUInt32LE(0)) r(JSON.parse(b.subarray(4, 4 + b.readUInt32LE(0)).toString())); }); setTimeout(() => r(null), 4000); });
+  run.stdin.end();
+  check('installed run.sh answers ping with minimal env', reply?.type === 'pong' && typeof reply.ok === 'boolean', JSON.stringify(reply));
 } catch (e) {
   console.error(e); failed++;
 } finally {

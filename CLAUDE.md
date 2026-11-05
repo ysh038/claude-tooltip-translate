@@ -30,12 +30,13 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 - **개인용 기본 엔진 = `claude-cli`** (hover·드래그 둘 다, 모델 `haiku`) — 사용자가 지금 API 키를 쓸 수 없음
 - claude-cli 흐름: background가 `connectNative('dev.claude_tooltip_translate.cli')` 포트 1개를 계속 열고 요청을 id로 구분 → host가 프로세스 풀로 처리
   - 개인용 manifest에 `key` 고정 → 확장 ID `jholkpnnifillalfkbgodapgegfadipe` (host manifest의 allowed_origins와 일치해야 함)
-  - 설치: `npm run host:install` → `native-host/config.json`(claude 절대 경로), `run.sh`(node 절대 경로), 브라우저별 `NativeMessagingHosts/*.json`. 저장소를 옮기면 다시 실행
-  - host 로그(메타데이터만, 번역 텍스트 X): `~/Library/Logs/claude-tooltip-translate/host.log`
+  - 설치: `npm run host:install` → host 코드를 `~/Library/Application Support/claude-tooltip-translate/host/`로 **복사**하고 거기에 `config.json`(claude 절대 경로)·`run.sh`(node 경로, stderr → 로그) 생성, 브라우저별 `NativeMessagingHosts/*.json` 등록. **`native-host/*.mjs`를 고치면 다시 실행해야 반영됨**
+  - 복사하는 이유: 저장소가 `~/Desktop`에 있으면 macOS(TCC)가 Chrome이 띄운 프로세스의 파일 읽기를 막아 "Native host has exited"가 남 (2026-11-05 실제 발생, 터미널에서 직접 실행하면 정상이라 헷갈림)
+  - host 로그(메타데이터만, 번역 텍스트 X): `~/Library/Logs/claude-tooltip-translate/host.log`, 시작 실패 등 stderr: `host.stderr.log`
   - 터미널에서 바로 확인: `npm run host:test -- "문장"`
   - rate_limit_event(구독 한도 상태)는 `chrome.storage.session.cliRateLimit`에 저장만 해 둠 (표시는 아직)
 - 검사: `npm run check:store`(store 빌드 후 nativeMessaging·manifest key·`claude-cli`/`connectNative`/`claude -p` 문자열 검사). `build.mjs`도 store 에디션에 개인용 전용 provider가 있으면 빌드 거부
-- `npm test` = check:store + test:host(15개) + e2e(39개). e2e는 personal·store 두 빌드 각각에 대해 가짜 SSE 서버 + Playwright로 hover/드래그/더블클릭/캐시/엔진 분리/옵션/팝업, personal은 가짜 claude로 native host 경유 hover/드래그까지 검증
+- `npm test` = check:store + test:host(18개, 임시 HOME에 설치해 최소 환경 ping까지) + e2e(39개). e2e는 personal·store 두 빌드 각각에 대해 가짜 SSE 서버 + Playwright로 hover/드래그/더블클릭/캐시/엔진 분리/옵션/팝업, personal은 가짜 claude로 native host 경유 hover/드래그까지 검증
   - 확장 로드 시 headless는 `channel: 'chromium'` 필요
   - Chromium은 `<user-data-dir>/NativeMessagingHosts/`의 host manifest를 읽음 → 테스트는 임시 프로필에 등록 (사용자 Chrome 설정 안 건드림)
 - CI 설정 파일은 아직 없음 → 원격 저장소 생기면 `npm ci && npx playwright install chromium && npm test`

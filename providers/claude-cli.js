@@ -22,7 +22,7 @@ function hostErrorText(raw) {
   if (/not found/i.test(raw)) return 'claude -p 중계 프로그램이 설치되지 않았습니다.\n터미널에서 프로젝트 폴더로 이동해 npm run host:install 을 실행한 뒤, 확장을 새로고침해 주세요.';
   if (/forbidden/i.test(raw)) return '중계 프로그램이 이 확장을 허용하지 않습니다(확장 ID 불일치).\nnpm run build:personal 후 npm run host:install 을 다시 실행해 주세요.';
   if (/failed to start/i.test(raw)) return '중계 프로그램을 시작하지 못했습니다.\nnpm run host:install 을 다시 실행해 주세요.';
-  return `claude -p 중계 프로그램 연결이 끊겼습니다: ${raw}\n로그: ~/Library/Logs/claude-tooltip-translate/host.log`;
+  return `claude -p 중계 프로그램 연결이 끊겼습니다: ${raw}\nnpm run host:install 을 다시 실행해 보세요.\n로그: ~/Library/Logs/claude-tooltip-translate/ (host.log, host.stderr.log)`;
 }
 
 function connect() {
