@@ -15,7 +15,7 @@ import path from 'node:path';
 const SPARES_PER_KEY = 1;          // 키별로 미리 띄워 둘 대기 프로세스 수
 const MAX_KEYS = 4;                // 대기 프로세스를 유지할 (모델, 프롬프트) 조합 수
 const SPARE_IDLE_MS = 15 * 60e3;   // 이 시간 동안 안 쓰면 대기 프로세스 정리
-const REQUEST_TIMEOUT_MS = 60e3;
+const IDLE_TIMEOUT_MS = 45e3;     // 이 시간 동안 claude 출력이 전혀 없으면 실패 (긴 텍스트는 오래 걸려도 계속 출력이 옴)
 
 export function claudeArgs({ model, system }) {
   return [
@@ -67,8 +67,14 @@ class Worker {
     this.req = req;
     this.text = '';
     req.startedAt = Date.now();
-    req.timer = setTimeout(() => this.fail('TIMEOUT', 'claude 응답 시간이 초과되었습니다.'), REQUEST_TIMEOUT_MS);
+    this.armTimeout();
     this.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: req.user } }) + '\n');
+  }
+
+  armTimeout() {
+    const req = this.req; if (!req) return;
+    clearTimeout(req.timer);
+    req.timer = setTimeout(() => this.fail('TIMEOUT', `claude가 ${IDLE_TIMEOUT_MS / 1000}초 동안 응답하지 않습니다.`), IDLE_TIMEOUT_MS);
   }
 
   onData(d) {
@@ -92,6 +98,7 @@ class Worker {
     }
     const req = this.req;
     if (!req) return;
+    this.armTimeout();
     if (e.type === 'stream_event') {
       const ev = e.event;
       if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
@@ -204,7 +211,7 @@ export class ClaudePool {
     const w = this.active.get(id);
     if (!w) return;
     this.active.delete(id);
-    if (w.req) { clearTimeout(w.req.timer); w.req = null; }
+    if (w.req) { clearTimeout(w.req.timer); this.log(`req cancel after ${Date.now() - w.req.startedAt}ms`); w.req = null; }
     w.kill();
   }
 

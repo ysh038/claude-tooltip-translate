@@ -25,6 +25,9 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     ru: /[Ѐ-ӿ]/
   };
 
+  // 드래그 번역 최대 길이. 넘으면 안내 표시 (예전엔 5000자 넘으면 조용히 무시 → "아예 안 됨"처럼 보였음)
+  const MAX_SELECTION = 20000;
+
   const wordSeg = new Intl.Segmenter(undefined, { granularity: 'word' });
   const sentSeg = new Intl.Segmenter(undefined, { granularity: 'sentence' });
 
@@ -176,6 +179,12 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     tip.src = tip.mode = tip.key = tip.wordRect = null;
   }
 
+  const sec = (ms) => (ms / 1000).toFixed(1) + 's';
+  // 첫 글자가 완료보다 확실히 먼저 왔을 때만(스트리밍) 두 값을 보여준다. 짧은 답은 한 번에 오므로 하나만
+  function timingLabel(first, total) {
+    return first && total - first >= 300 ? `첫 ${sec(first)} · ${sec(total)}` : sec(total);
+  }
+
   function translate({ src, mode, text, context, anchor, key, wordRect }) {
     cancel();
     ensureUI();
@@ -193,14 +202,26 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     catch { showError('확장 프로그램이 업데이트되었습니다. 페이지를 새로고침해 주세요.'); return; }
     tip.port = port;
     const id = tip.reqId;
+    // 시간은 여기(요청 시작 → 화면 표시)에서 잰다: 확장 내부 통신까지 포함, 마우스 멈춤 대기는 제외
+    const t0 = performance.now();
+    let tFirst = 0;
     port.onMessage.addListener((m) => {
       if (id !== tip.reqId) return;
-      if (m.type === 'delta') { tip.text = m.full; render(); }
-      else if (m.type === 'done') {
+      if (m.type === 'delta') {
+        if (!tFirst && m.full) tFirst = performance.now() - t0;
+        tip.text = m.full; render();
+      } else if (m.type === 'done') {
         tip.text = m.text; tip.done = true; render();
-        elMeta.textContent = m.cached ? '캐시' : `${(m.ttft / 1000).toFixed(1)}s / ${(m.ms / 1000).toFixed(1)}s`;
-        const who = [m.engine, m.model].filter(Boolean).join(' · ');
-        elMeta.title = (m.cached ? '이전 결과 재사용' : '첫 글자 / 전체 시간') + (who ? ' · ' + who : '');
+        const total = performance.now() - t0;
+        const who = m.model || m.engine || ''; // provider.describe() (예: claude -p · haiku), 없으면 엔진 이름
+        const wait = src === 'hover' && S.hoverModifier === 'none' ? `\n(마우스를 멈춘 뒤 대기 ${(S.hoverDelay / 1000).toFixed(2)}s는 별도)` : '';
+        if (m.cached) {
+          elMeta.textContent = '캐시';
+          elMeta.title = '이전 결과 재사용' + (who ? ' · ' + who : '');
+        } else {
+          elMeta.textContent = timingLabel(tFirst, total);
+          elMeta.title = `요청 → 완료 ${sec(total)}` + (tFirst ? ` (첫 글자 ${sec(tFirst)})` : '') + (who ? ' · ' + who : '') + wait;
+        }
         try { port.disconnect(); } catch {}
         tip.port = null;
       } else if (m.type === 'error') {
@@ -391,8 +412,18 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
       range = sel.getRangeAt(0);
     }
     text = text.trim();
-    if (!text || text.length > 5000) return;
+    if (!text) return;
     if (/^[\d\s.,:%\-+/]+$/.test(text)) return;
+    const anchor = { left: x, width: 0, top: y - 12, bottom: y + 12 };
+    if (text.length > MAX_SELECTION) {
+      // 조용히 무시하지 않고 이유를 보여준다
+      cancel(); ensureUI(); fab.hidden = true;
+      Object.assign(tip, { src: 'selection', mode: 'text', anchor, key: 'sel-too-long', wordRect: null, text: '', done: true });
+      box.className = 'box text'; box.hidden = false;
+      elSrc.textContent = '선택 번역'; elSrc.title = '';
+      showError(`선택한 텍스트가 너무 깁니다 (${text.length.toLocaleString()}자).\n${MAX_SELECTION.toLocaleString()}자 이하로 나눠서 선택해 주세요.`);
+      return;
+    }
 
     const single = isSingleWord(text);
     let context = '';
@@ -401,7 +432,6 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
       const lead = raw.length - raw.trimStart().length;
       context = contextFor(range.startContainer, range.startOffset + (range.startContainer.nodeType === 3 ? lead : 0), text.length);
     }
-    const anchor = { left: x, width: 0, top: y - 12, bottom: y + 12 };
     const job = { src: 'selection', mode: single ? 'word' : 'text', text, context, anchor, key: 'sel|' + text };
 
     if (tip.src === 'selection' && tip.key === job.key && box && !box.hidden) return;

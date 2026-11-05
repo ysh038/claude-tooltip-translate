@@ -89,6 +89,10 @@ try {
   check('cancel kills the running process', readLog(LOG).some((e) => e.event === 'exit' && e.pid === msgC?.pid));
   check('cancelled request gets no done', !(await h.waitFor((m) => m.id === 'c' && m.type === 'done', 600)));
 
+  // 출력이 계속 오면 오래 걸려도 시간 초과 아님 (idle timeout) — SLOW는 3초 지연 후 정상 응답
+  h.send({ type: 'translate', id: 's', ...JOB, user: 'SLOW but fine' });
+  check('slow but progressing request completes', !!(await h.waitFor((m) => m.id === 's' && m.type === 'done', 6000)));
+
   // 로그인 안 됨
   h.send({ type: 'translate', id: 'd', ...JOB, user: 'AUTHFAIL' });
   const errD = await h.waitFor((m) => m.id === 'd' && m.type === 'error');

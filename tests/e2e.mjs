@@ -34,7 +34,9 @@ const server = http.createServer((req, res) => {
   res.end(`<!doctype html><title>Geography notes</title><body style="font:20px serif;padding:40px">
   <p id="p1">She sat on the <b>bank</b> of the river and watched the boats drift by. Then she went home.</p>
   <p id="p2">The quick brown fox jumps over the lazy dog.</p>
-  <p id="p3">한국어 문장은 무시되어야 합니다.</p></body>`);
+  <p id="p3">한국어 문장은 무시되어야 합니다.</p>
+  <p id="long" style="font-size:4px">${'The river bank was quiet in the morning. '.repeat(170)}</p>
+  <p id="huge" style="font-size:2px">${'Too much text to translate at once. '.repeat(600)}</p></body>`);
 });
 
 // 테스트용 빌드: localhost 호출 허용
@@ -88,6 +90,7 @@ async function runSuite(edition) {
     // hover "bank"
     await hoverBank();
     const h1 = await tipText(); check('hover shows contextual meaning', h1 && !h1.hidden && h1.src === 'bank' && h1.body.startsWith('강둑'));
+    check('timing label is single total or first·total', /^\d+\.\ds$|^첫 \d+\.\ds · \d+\.\ds$/.test(h1?.meta || ''), JSON.stringify(h1?.meta));
     check('context marks target word', /⟦bank⟧/.test(log[0]?.body.messages[0].content || ''));
     // move away -> hide
     await moveAway();
@@ -106,6 +109,24 @@ async function runSuite(edition) {
     const f = await page.evaluate(() => { const p = document.querySelector('#p2'); const r = document.createRange(); const t = p.firstChild; const i = t.data.indexOf('fox'); r.setStart(t, i); r.setEnd(t, i + 3); const b = r.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
     await page.mouse.dblclick(f.x, f.y); await page.waitForTimeout(800);
     const d1 = await tipText(); check('double-click uses word mode', !d1.hidden && d1.src === 'fox');
+    // 긴 선택(5000자 초과)도 번역, 한도(20000자) 초과는 안내
+    const selectAll = (id) => page.evaluate((id) => {
+      const el = document.getElementById(id); const r = document.createRange(); r.selectNodeContents(el);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 300, clientY: 200, bubbles: true }));
+      return sel.toString().length;
+    }, id);
+    await page.mouse.click(900, 550); await page.waitForTimeout(200);
+    const nL = log.length;
+    const longLen = await selectAll('long'); await page.waitForTimeout(1200);
+    const l1 = await tipText();
+    check('long selection (>5000 chars) is translated', longLen > 5000 && !l1.hidden && l1.body.includes('강둑') && log.length === nL + 1 && log.at(-1).body.messages[0].content.length > 5000, `len=${longLen}`);
+    await page.mouse.click(900, 550); await page.waitForTimeout(200);
+    const nH = log.length;
+    const hugeLen = await selectAll('huge'); await page.waitForTimeout(500);
+    const g1 = await tipText();
+    check('over-limit selection shows a message instead of nothing', hugeLen > 20000 && !g1.hidden && g1.body.includes('너무 깁니다') && log.length === nH, JSON.stringify(g1));
+    await page.mouse.click(900, 550); await page.waitForTimeout(200);
     // cache: hover bank again
     await page.mouse.click(900, 550); await page.waitForTimeout(200);
     const n1 = log.length;

@@ -24,6 +24,9 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 - background: port 1개 = 요청 1개(disconnect 시 abort). 요청 `{source:'hover'|'selection', mode, text, context, title}` → `engineFor(source)`로 provider 선택 → `available()` → 캐시(키에 provider id·cacheTag 포함) → `translate()`
 - 설정 `hoverEngine` / `selectionEngine`: 저장된 id가 에디션에 없으면 첫 provider로 대체. 옵션 페이지에 엔진 선택 + 사용 가능 여부 표시
 - content.js는 `CONTENT_KEYS`만 읽음(API 키를 content script로 가져가지 않음)
+- 드래그 최대 `MAX_SELECTION` = 20,000자. 넘으면 툴팁에 안내 (예전엔 5,000자 초과를 조용히 무시해서 "많이 선택하면 아예 안 됨"으로 보였음)
+- 툴팁 오른쪽 위 시간은 **content script에서** 요청 시작 → 화면 표시까지 측정 (확장 내부 통신 포함, hover 대기는 제외하고 title에 따로 표시). 첫 글자가 완료보다 0.3s 이상 먼저 왔을 때만 `첫 X · Y`, 아니면 `Y` 하나 — claude -p는 짧은 답을 한 번에 보내서 예전 `1.3s / 1.3s`처럼 보였음
+- host 시간 초과는 **무응답 45초**(출력이 계속 오면 오래 걸려도 OK). 취소도 host.log에 `req cancel`로 남음
 - 오류는 provider가 `ProviderError(message, {code, needsSetup})`로 던짐. `needsSetup`이면 툴팁에 "설정 열기"
 - `apiBase`는 UI에 노출 안 된 테스트용 오버라이드
 - provider는 `settings`(선택 항목)·`help`를 선언하면 옵션 페이지에 섹션이 자동 생성됨 → 개인용 전용 문구가 공용 HTML에 들어가지 않게
@@ -68,6 +71,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 | 같은 옵션, **미리 띄워 둔 프로세스**에 요청 | 첫 글자 0.6s / 완성 0.8~1.0s |
 | 확장 전체 경로(임시 프로필, 실제 claude, haiku) hover | 멈춘 뒤 표시까지 ~1.5s (hover 대기 0.45s 포함) |
 | 확장 전체 경로 드래그 | ~1.3s |
+| 확장 전체 경로, 드래그 5,641자 (실제 claude, haiku) | 첫 글자 1.9s / 완료 9.3s, 끝까지 잘림 없음 |
 | **실제 Chrome**(사용자 프로필) 첫 4건, host.log 기준 | 첫 글자 0.7~1.7s(한 번 3.1s) / 완성 1.3~3.1s, 모두 대기 프로세스 사용 |
 → 대기 프로세스를 쓰면 API 직접 호출과 비슷. hover에도 쓸 만함 (Chrome 내장 번역 2단계 표시는 선택 사항으로 남김)
 → 한 프로세스에 연속으로 보내면 답 뒤 post_turn_summary 1.5s 때문에 처리량이 요청당 ~3s

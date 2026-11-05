@@ -39,6 +39,6 @@ export function buildPrompt(req, s) {
   ].join('\n');
   const user = (req.context ? `<context>${req.context}</context>${title ? `\n<page_title>${req.title}</page_title>` : ''}\n` : '') +
     `<text>${req.text}</text>`;
-  const maxTokens = Math.min(4096, Math.max(256, Math.ceil(req.text.length * 2.5)));
+  const maxTokens = Math.min(32000, Math.max(256, Math.ceil(req.text.length * 2.5))); // 긴 선택도 잘리지 않게
   return { system, user, maxTokens };
 }
