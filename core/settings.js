@@ -17,13 +17,14 @@ export const DEFAULTS = {
   selectionEngine: 'anthropic-api', // 드래그(선택) 번역에 쓸 provider id
   contextMode: 'sentence',   // none | sentence | paragraph
   showAlternatives: true,    // 단어 번역 시 다른 뜻 표시
+  tipPinned: null,           // 📌 화면 고정 위치 {x, y} (viewport px). null이면 글자 옆에 표시
   apiBase: 'https://api.anthropic.com', // UI에 노출 안 된 테스트용 오버라이드
   ...EDITION.defaults
 };
 
 // content script가 읽는 키 (API 키 등 민감한 값은 content script로 가져가지 않는다)
 export const CONTENT_KEYS = ['hoverEnabled', 'hoverModifier', 'hoverDelay', 'hoverSkipTarget',
-  'selectionEnabled', 'selectionMode', 'contextMode', 'targetLang'];
+  'selectionEnabled', 'selectionMode', 'contextMode', 'targetLang', 'tipPinned'];
 
 export const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k]]));
 

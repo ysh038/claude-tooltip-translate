@@ -12,6 +12,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     chrome.storage.onChanged.addListener((ch, area) => {
       if (area !== 'local') return;
       for (const k in ch) if (k in DEFAULTS) S[k] = ch[k].newValue;
+      if (ch.tipPinned) { updatePinBtn(); if (box && !box.hidden) schedulePlace(); }
       if (!S.hoverEnabled && tip.src === 'hover') hide();
     });
   } catch { return; }
@@ -50,7 +51,17 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     }
     .box.text { max-width: min(460px, calc(100vw - 16px)); }
     @keyframes in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-    .head { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
+    .head { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; user-select: none; }
+    /* 글자(.body)가 아닌 곳을 잡고 끌면 툴팁 이동. 글자는 선택·복사용으로 남겨 둔다 */
+    .box { cursor: grab; touch-action: none; }
+    .box.dragging { cursor: grabbing; box-shadow: 0 14px 38px rgba(0,0,0,.26), 0 2px 6px rgba(0,0,0,.10); }
+    .body, .slow { cursor: text; }
+    .btn, .link { cursor: pointer; }
+    .pin { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; }
+    .pin svg { width: 13px; height: 13px; transform: rotate(45deg); transition: transform .15s; }
+    .pin.on { color: var(--accent); }
+    .pin.on svg { transform: none; }
+    .pin.hint { color: var(--accent); animation: b 1.2s 2; }
     .src { flex: 1 1 auto; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
     .meta { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .meta.late { color: var(--accent); font-weight: 600; }
@@ -74,8 +85,13 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     [hidden] { display: none !important; }
   `;
 
-  let host, root, box, elSrc, elMeta, elBody, elSlow, fab;
-  const tip = { src: null, mode: null, port: null, reqId: 0, text: '', done: false, anchor: null, key: null, wordRect: null };
+  let host, root, box, elSrc, elMeta, elBody, elSlow, fab, pinBtn;
+  // detached: 사용자가 끌어서 옮긴 툴팁 → 화면(viewport)의 (fx, fy)에 고정, 글자에서 마우스가 떠나거나 스크롤해도 유지
+  const tip = { src: null, mode: null, port: null, reqId: 0, text: '', done: false, anchor: null, key: null, wordRect: null, detached: false, fx: 0, fy: 0 };
+  const PIN_SVG = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M10.2 1.3a1 1 0 0 1 1.4 0l3.1 3.1a1 1 0 0 1-.3 1.6l-2.3 1-2 2 .5 2.6a1 1 0 0 1-.3.9l-.5.5a1 1 0 0 1-1.4 0L6.1 10.7 2.4 14.4a.7.7 0 1 1-1-1l3.7-3.7-2.3-2.3a1 1 0 0 1 0-1.4l.5-.5a1 1 0 0 1 .9-.3l2.6.5 2-2 1-2.3a1 1 0 0 1 .4-.4z"/></svg>';
+  // 고정 모드(📌 켬): 모든 툴팁을 저장된 화면 위치에. 꺼져 있으면 글자/선택 옆에
+  const pinnedPos = () => S.tipPinned;
+  const isFixed = () => !!(tip.detached || pinnedPos());
 
   function ensureUI() {
     if (host && host.isConnected) return;
@@ -85,7 +101,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     root.innerHTML = `<style>${CSS}</style>
       <div class="box" hidden>
         <div class="head"><span class="src"></span><span class="meta"></span>
-          <button class="btn copy" title="복사">복사</button><button class="btn close" title="닫기 (Esc)">✕</button></div>
+          <button class="btn pin" aria-pressed="false">${PIN_SVG}</button><button class="btn copy" title="복사">복사</button><button class="btn close" title="닫기 (Esc)">✕</button></div>
         <div class="body"></div>
         <div class="slow" hidden></div>
       </div>
@@ -98,6 +114,10 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     elSlow = root.querySelector('.slow');
     fab = root.querySelector('.fab');
     root.querySelector('.close').addEventListener('click', hide);
+    pinBtn = root.querySelector('.pin');
+    pinBtn.addEventListener('click', togglePin);
+    setupDrag();
+    updatePinBtn();
     root.querySelector('.copy').addEventListener('click', copyText);
     fab.addEventListener('mousedown', (e) => e.preventDefault()); // 선택 해제 방지
     fab.addEventListener('click', () => {
@@ -107,9 +127,19 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
   }
 
   function place() {
-    const a = tip.anchor; if (!a || box.hidden) return;
+    if (!box || box.hidden) return;
     const vw = document.documentElement.clientWidth, vh = window.innerHeight;
     const bw = box.offsetWidth, bh = box.offsetHeight;
+    const fixedAt = tip.detached ? { x: tip.fx, y: tip.fy } : pinnedPos();
+    if (fixedAt) {
+      // 화면 기준 고정 (스크롤해도 그 자리). 창 크기가 바뀌어도 화면 안에 들어오게
+      box.style.position = 'fixed';
+      box.style.left = Math.max(8, Math.min(fixedAt.x, vw - bw - 8)) + 'px';
+      box.style.top = Math.max(8, Math.min(fixedAt.y, vh - bh - 8)) + 'px';
+      return;
+    }
+    box.style.position = 'absolute';
+    const a = tip.anchor; if (!a) return;
     let left = a.left + a.width / 2 - bw / 2;
     left = Math.max(8, Math.min(left, vw - bw - 8));
     let top = a.bottom + 8;
@@ -183,6 +213,72 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     if (box) box.hidden = true;
     if (fab) fab.hidden = true;
     tip.src = tip.mode = tip.key = tip.wordRect = null;
+    tip.detached = false;
+  }
+
+  /* ───────────── 끌어서 옮기기 / 📌 고정 ───────────── */
+  function updatePinBtn() {
+    if (!pinBtn) return;
+    const on = !!pinnedPos();
+    pinBtn.classList.toggle('on', on);
+    if (on) pinBtn.classList.remove('hint');
+    pinBtn.setAttribute('aria-pressed', String(on));
+    pinBtn.title = on
+      ? '화면 고정 켜짐 — 번역창이 항상 이 자리에 뜹니다 (끌어서 위치 변경)\n누르면 해제: 글자 옆에 뜨기'
+      : '화면에 고정 — 다음 번역부터 이 자리에 뜨게 하기\n(지금: 글자 옆에 뜸)';
+  }
+
+  function savePin(pos) {
+    S.tipPinned = pos;
+    try { chrome.storage.local.set({ tipPinned: pos }); } catch {}
+    updatePinBtn();
+  }
+
+  function togglePin() {
+    const r = box.getBoundingClientRect();
+    if (pinnedPos()) {
+      // 해제: 지금 창은 제자리에 두고(튀지 않게), 다음 번역부터 글자 옆에
+      Object.assign(tip, { detached: true, fx: r.left, fy: r.top });
+      savePin(null);
+    } else {
+      savePin({ x: Math.round(r.left), y: Math.round(r.top) });
+      tip.detached = false;
+    }
+    place();
+  }
+
+  function setupDrag() {
+    let drag = null;
+    box.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const t = e.composedPath()[0];
+      if (t && t.closest && t.closest('.body, .slow, button')) return; // 글자는 선택·복사, 버튼은 클릭
+      const r = box.getBoundingClientRect();
+      drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false };
+      box.setPointerCapture(e.pointerId);
+      e.preventDefault(); // 페이지 글자 선택·mousedown(툴팁 닫기) 방지
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 3) return;
+      if (!drag.moved) { drag.moved = true; box.classList.add('dragging'); }
+      clearTimeout(hideTimer); hideTimer = 0;
+      Object.assign(tip, { detached: true, fx: e.clientX - drag.dx, fy: e.clientY - drag.dy });
+      place();
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const moved = drag.moved;
+      drag = null;
+      box.classList.remove('dragging');
+      if (!moved) return;
+      const r = box.getBoundingClientRect();
+      Object.assign(tip, { fx: r.left, fy: r.top });
+      if (pinnedPos()) { savePin({ x: Math.round(r.left), y: Math.round(r.top) }); tip.detached = false; }
+      else pinBtn.classList.add('hint'); // "여기 고정할 수 있어요" 살짝 알려주기
+    };
+    box.addEventListener('pointerup', end);
+    box.addEventListener('pointercancel', end);
   }
 
   const sec = (ms) => (ms / 1000).toFixed(1) + 's';
@@ -217,7 +313,8 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     cancel();
     ensureUI();
     fab.hidden = true;
-    Object.assign(tip, { src, mode, anchor, key, wordRect, text: '', done: false });
+    Object.assign(tip, { src, mode, anchor, key, wordRect, text: '', done: false, detached: false });
+    pinBtn.classList.remove('hint');
     box.className = 'box ' + mode;
     box.hidden = false;
     elSrc.textContent = mode === 'word' ? text : '선택 번역';
@@ -390,7 +487,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     last = { x: e.clientX, y: e.clientY, target: e.target };
 
     // 오버 툴팁: 단어/툴팁 밖으로 나가면 잠시 후 닫기
-    if (tip.src === 'hover' && box && !box.hidden) {
+    if (tip.src === 'hover' && box && !box.hidden && !isFixed()) { // 옮겼거나 고정한 창은 그대로 둠
       if (overOurUI(e.target) || insideRect(e.clientX, e.clientY, tip.wordRect)) {
         clearTimeout(hideTimer); hideTimer = 0;
       } else if (!hideTimer) {
@@ -414,7 +511,8 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     }
   }, true);
 
-  window.addEventListener('scroll', () => { if (tip.src === 'hover') hide(); }, { passive: true, capture: true });
+  window.addEventListener('scroll', () => { if (tip.src === 'hover' && !isFixed()) hide(); }, { passive: true, capture: true });
+  window.addEventListener('resize', () => { if (box && !box.hidden) schedulePlace(); });
   window.addEventListener('blur', () => { clearTimeout(hoverTimer); });
 
   /* ───────────── 2) 드래그(선택) 번역 ───────────── */
@@ -449,7 +547,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     if (text.length > MAX_SELECTION) {
       // 조용히 무시하지 않고 이유를 보여준다
       cancel(); ensureUI(); fab.hidden = true;
-      Object.assign(tip, { src: 'selection', mode: 'text', anchor, key: 'sel-too-long', wordRect: null, text: '', done: true });
+      Object.assign(tip, { src: 'selection', mode: 'text', anchor, key: 'sel-too-long', wordRect: null, text: '', done: true, detached: false });
       box.className = 'box text'; box.hidden = false;
       elSrc.textContent = '선택 번역'; elSrc.title = '';
       showError(`선택한 텍스트가 너무 깁니다 (${text.length.toLocaleString()}자).\n${MAX_SELECTION.toLocaleString()}자 이하로 나눠서 선택해 주세요.`);

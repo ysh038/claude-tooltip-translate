@@ -38,6 +38,7 @@ const server = http.createServer((req, res) => {
   <p id="p3">한국어 문장은 무시되어야 합니다.</p>
   <p id="long" style="font-size:4px">${'The river bank was quiet in the morning. '.repeat(170)}</p>
   <p id="slow">SLOWTEXT this one takes a while to answer.</p>
+  <div style="height:1600px"></div>
   <p id="huge" style="font-size:2px">${'Too much text to translate at once. '.repeat(600)}</p></body>`);
 });
 
@@ -155,6 +156,51 @@ async function runSuite(edition) {
     const n1 = calls();
     await hoverBank(900);
     const c1 = await tipText(); check('repeat hover served from cache', c1.meta === '캐시' && calls() - n1 === 0);
+    await moveAway();
+
+    // ── 툴팁 끌어서 옮기기 / 📌 고정 ──
+    const boxRect = () => page.evaluate(() => { const r = document.querySelector('claude-tip-translate').shadowRoot; const b = r.querySelector('.box'); const rc = b.getBoundingClientRect(); return { x: Math.round(rc.left), y: Math.round(rc.top), pos: b.style.position, hidden: b.hidden, hint: r.querySelector('.pin').classList.contains('hint'), pinOn: r.querySelector('.pin').classList.contains('on') }; });
+    const centerOf = (sel) => page.evaluate((sel) => { const el = document.querySelector('claude-tip-translate').shadowRoot.querySelector(sel); const rc = el.getBoundingClientRect(); return { x: rc.left + Math.min(20, rc.width / 2), y: rc.top + rc.height / 2 }; }, sel);
+    const dragFrom = async (pt, dx, dy) => { await page.mouse.move(pt.x, pt.y); await page.mouse.down(); await page.mouse.move(pt.x + dx / 2, pt.y + dy / 2, { steps: 4 }); await page.mouse.move(pt.x + dx, pt.y + dy, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(150); };
+    const pinStore = () => sw.evaluate(() => chrome.storage.local.get('tipPinned')).then((x) => x.tipPinned ?? null);
+    await hoverBank(1500);
+    const r0 = await boxRect();
+    await dragFrom(await centerOf('.src'), 220, 140);
+    const r1 = await boxRect();
+    check('drag header moves tooltip (fixed position)', Math.abs(r1.x - r0.x - 220) <= 2 && Math.abs(r1.y - r0.y - 140) <= 2 && r1.pos === 'fixed' && !r1.hidden, JSON.stringify([r0, r1]));
+    check('after an unpinned drag the pin button hints', r1.hint && !r1.pinOn);
+    await page.mouse.move(950, 580); await page.waitForTimeout(600);
+    check('moved hover tooltip stays after mouse leaves the word', !(await boxRect()).hidden);
+    await page.evaluate(() => window.scrollBy(0, 200)); await page.waitForTimeout(300);
+    const r2 = await boxRect();
+    check('moved tooltip stays put on scroll (viewport-fixed)', !r2.hidden && r2.x === r1.x && r2.y === r1.y, JSON.stringify(r2));
+    await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(200);
+    // 글자 부분을 끌면 이동이 아니라 글자 선택(복사용)
+    const bodyPt = await centerOf('.body .main');
+    await dragFrom({ x: bodyPt.x - 15, y: bodyPt.y }, 60, 0);
+    const r3 = await boxRect();
+    const selTxt = await page.evaluate(() => document.querySelector('claude-tip-translate').shadowRoot.getSelection?.().toString() || getSelection().toString());
+    check('dragging the text selects it instead of moving the tooltip', r3.x === r2.x && r3.y === r2.y && selTxt.length > 0, JSON.stringify({ r3, selTxt }));
+    // 📌 켜기 → 위치 저장, 다음 번역도 그 자리
+    await page.click('claude-tip-translate >> .pin'); await page.waitForTimeout(200);
+    const pinned = await pinStore();
+    const r4 = await boxRect();
+    check('pin saves current position', pinned && Math.abs(pinned.x - r4.x) <= 1 && Math.abs(pinned.y - r4.y) <= 1 && r4.pinOn, JSON.stringify({ pinned, r4 }));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await page.mouse.dblclick(f.x, f.y); await page.waitForTimeout(1500);
+    const r5 = await boxRect();
+    check('pinned: next translation opens at the pinned spot', !r5.hidden && r5.x === pinned.x && r5.y === pinned.y && r5.pos === 'fixed', JSON.stringify({ r5, pinned, fox: f }));
+    // 고정 상태에서 끌면 고정 위치가 바뀜
+    await dragFrom(await centerOf('.src'), -120, 60);
+    const pinned2 = await pinStore();
+    check('dragging while pinned updates the pinned spot', pinned2 && Math.abs(pinned2.x - (pinned.x - 120)) <= 2 && Math.abs(pinned2.y - (pinned.y + 60)) <= 2, JSON.stringify(pinned2));
+    // 다른 탭에도 적용 (설정 저장) → 해제하면 다시 글자 옆
+    await page.click('claude-tip-translate >> .pin'); await page.waitForTimeout(200);
+    check('unpin clears the saved spot', (await pinStore()) === null && !(await boxRect()).pinOn);
+    await page.keyboard.press('Escape'); await clearTip();
+    await hoverBank(1500);
+    const r6 = await boxRect();
+    check('unpinned: tooltip opens next to the word again', !r6.hidden && r6.pos === 'absolute' && r6.y > bankPos.y && r6.y - bankPos.y < 60, JSON.stringify({ r6, bankPos }));
     await moveAway();
 
     // 이 에디션에 없는 엔진 id가 저장돼 있으면 첫 provider로 대체

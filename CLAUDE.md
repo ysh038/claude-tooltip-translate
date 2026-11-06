@@ -29,6 +29,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 - content.js는 `CONTENT_KEYS`만 읽음(API 키를 content script로 가져가지 않음)
 - 드래그 최대 `MAX_SELECTION` = 20,000자. 넘으면 툴팁에 안내 (예전엔 5,000자 초과를 조용히 무시해서 "많이 선택하면 아예 안 됨"으로 보였음)
 - 툴팁 오른쪽 위 시간은 **content script에서** 요청 시작부터 측정 (확장 내부 통신 포함, hover 대기는 제외하고 title에 따로 표시). 요청 중엔 0.1초마다 `1.2s`처럼 실시간 갱신, 끝나면 최종 시간 하나만 (첫 글자 시간은 title에). `SLOW_MS`(3초) 넘으면 시간이 강조색 + 본문 아래 ⏳ 안내(글자가 나오는 중인지, 10초 넘게 무응답인지에 따라 문구 다름), 완료·오류·취소 시 사라짐
+- 툴팁 이동·고정 (2026-11-06): 글자(`.body`, `.slow`)·버튼이 아닌 곳을 pointer로 끌면 이동 → `tip.detached`(viewport 좌표 `fx/fy`, `position: fixed`). 옮긴 창은 hover여도 마우스가 떠나거나 스크롤해도 안 닫힘. 📌(`.pin`) 켜면 `tipPinned {x,y}`를 storage에 저장 → 모든 새 툴팁이 그 위치(fixed)에, 고정 중 끌면 위치 갱신, 끄면 다음부터 글자 옆(absolute). 고정 안 한 채 끌면 📌가 강조색으로 깜빡여 고정할 수 있음을 알림. 창 크기가 바뀌면 화면 안으로 clamp
 - host 시간 초과는 **무응답 45초**(출력이 계속 오면 오래 걸려도 OK). 취소도 host.log에 `req cancel`로 남음
 - 오류는 provider가 `ProviderError(message, {code, needsSetup})`로 던짐. `needsSetup`이면 툴팁에 "설정 열기"
 - `apiBase`는 UI에 노출 안 된 테스트용 오버라이드
