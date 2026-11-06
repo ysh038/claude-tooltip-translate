@@ -53,6 +53,8 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     .head { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
     .src { flex: 1 1 auto; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
     .meta { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .meta.late { color: var(--accent); font-weight: 600; }
+    .slow { margin-top: 6px; font-size: 12px; color: var(--muted); }
     .btn { all: unset; cursor: pointer; padding: 0 5px; border-radius: 4px; color: var(--muted); font-size: 12px; line-height: 20px; }
     .btn:hover { background: var(--hover); color: var(--fg); }
     .body { white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
@@ -72,7 +74,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     [hidden] { display: none !important; }
   `;
 
-  let host, root, box, elSrc, elMeta, elBody, fab;
+  let host, root, box, elSrc, elMeta, elBody, elSlow, fab;
   const tip = { src: null, mode: null, port: null, reqId: 0, text: '', done: false, anchor: null, key: null, wordRect: null };
 
   function ensureUI() {
@@ -85,6 +87,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
         <div class="head"><span class="src"></span><span class="meta"></span>
           <button class="btn copy" title="복사">복사</button><button class="btn close" title="닫기 (Esc)">✕</button></div>
         <div class="body"></div>
+        <div class="slow" hidden></div>
       </div>
       <div class="fab" hidden>번역</div>`;
     (document.body || document.documentElement).appendChild(host);
@@ -92,6 +95,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     elSrc = root.querySelector('.src');
     elMeta = root.querySelector('.meta');
     elBody = root.querySelector('.body');
+    elSlow = root.querySelector('.slow');
     fab = root.querySelector('.fab');
     root.querySelector('.close').addEventListener('click', hide);
     root.querySelector('.copy').addEventListener('click', copyText);
@@ -151,6 +155,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
       b.addEventListener('click', () => { try { chrome.runtime.sendMessage({ type: 'openOptions' }); } catch {} });
       elBody.appendChild(b);
     }
+    stopTimer();
     elMeta.textContent = '';
     schedulePlace();
   }
@@ -167,6 +172,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
 
   /* ───────────── 요청 ───────────── */
   function cancel() {
+    stopTimer();
     tip.reqId++;
     if (tip.port) { try { tip.port.disconnect(); } catch {} tip.port = null; }
   }
@@ -180,9 +186,31 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
   }
 
   const sec = (ms) => (ms / 1000).toFixed(1) + 's';
-  // 첫 글자가 완료보다 확실히 먼저 왔을 때만(스트리밍) 두 값을 보여준다. 짧은 답은 한 번에 오므로 하나만
-  function timingLabel(first, total) {
-    return first && total - first >= 300 ? `첫 ${sec(first)} · ${sec(total)}` : sec(total);
+
+  /* 경과 시간: 요청 중엔 0.1초마다 갱신, SLOW_MS가 지나면 "오래 걸리고 있어요" 안내 */
+  const SLOW_MS = 3000;
+  let timer = 0;
+  function startTimer(t0) {
+    stopTimer();
+    elMeta.className = 'meta';
+    elMeta.textContent = '0.0s';
+    elMeta.title = '요청 후 지난 시간';
+    timer = setInterval(() => {
+      const ms = performance.now() - t0;
+      elMeta.textContent = sec(ms);
+      if (ms >= SLOW_MS) {
+        elMeta.classList.add('late');
+        const msg = tip.text
+          ? '⏳ 오래 걸리고 있어요 — 번역이 이어서 나오는 중이에요'
+          : ms >= 10000 ? '⏳ 응답이 많이 늦어지고 있어요… (Esc로 닫기)' : '⏳ 오래 걸리고 있어요…';
+        if (elSlow.hidden || elSlow.textContent !== msg) { elSlow.textContent = msg; elSlow.hidden = false; schedulePlace(); }
+      }
+    }, 100);
+  }
+  function stopTimer() {
+    clearInterval(timer); timer = 0;
+    if (elSlow && !elSlow.hidden) { elSlow.hidden = true; schedulePlace(); }
+    if (elMeta) elMeta.classList.remove('late');
   }
 
   function translate({ src, mode, text, context, anchor, key, wordRect }) {
@@ -195,6 +223,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     elSrc.textContent = mode === 'word' ? text : '선택 번역';
     elSrc.title = text;
     elMeta.textContent = '';
+    stopTimer();
     render();
 
     let port;
@@ -205,12 +234,14 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
     // 시간은 여기(요청 시작 → 화면 표시)에서 잰다: 확장 내부 통신까지 포함, 마우스 멈춤 대기는 제외
     const t0 = performance.now();
     let tFirst = 0;
+    startTimer(t0);
     port.onMessage.addListener((m) => {
       if (id !== tip.reqId) return;
       if (m.type === 'delta') {
         if (!tFirst && m.full) tFirst = performance.now() - t0;
         tip.text = m.full; render();
       } else if (m.type === 'done') {
+        stopTimer();
         tip.text = m.text; tip.done = true; render();
         const total = performance.now() - t0;
         const who = m.model || m.engine || ''; // provider.describe() (예: claude -p · haiku), 없으면 엔진 이름
@@ -219,7 +250,7 @@ import { DEFAULTS as ALL_DEFAULTS, CONTENT_KEYS, pick } from '../core/settings.j
           elMeta.textContent = '캐시';
           elMeta.title = '이전 결과 재사용' + (who ? ' · ' + who : '');
         } else {
-          elMeta.textContent = timingLabel(tFirst, total);
+          elMeta.textContent = sec(total);
           elMeta.title = `요청 → 완료 ${sec(total)}` + (tFirst ? ` (첫 글자 ${sec(tFirst)})` : '') + (who ? ' · ' + who : '') + wait;
         }
         try { port.disconnect(); } catch {}

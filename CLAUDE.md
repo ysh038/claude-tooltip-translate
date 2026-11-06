@@ -25,7 +25,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 - 설정 `hoverEngine` / `selectionEngine`: 저장된 id가 에디션에 없으면 첫 provider로 대체. 옵션 페이지에 엔진 선택 + 사용 가능 여부 표시
 - content.js는 `CONTENT_KEYS`만 읽음(API 키를 content script로 가져가지 않음)
 - 드래그 최대 `MAX_SELECTION` = 20,000자. 넘으면 툴팁에 안내 (예전엔 5,000자 초과를 조용히 무시해서 "많이 선택하면 아예 안 됨"으로 보였음)
-- 툴팁 오른쪽 위 시간은 **content script에서** 요청 시작 → 화면 표시까지 측정 (확장 내부 통신 포함, hover 대기는 제외하고 title에 따로 표시). 첫 글자가 완료보다 0.3s 이상 먼저 왔을 때만 `첫 X · Y`, 아니면 `Y` 하나 — claude -p는 짧은 답을 한 번에 보내서 예전 `1.3s / 1.3s`처럼 보였음
+- 툴팁 오른쪽 위 시간은 **content script에서** 요청 시작부터 측정 (확장 내부 통신 포함, hover 대기는 제외하고 title에 따로 표시). 요청 중엔 0.1초마다 `1.2s`처럼 실시간 갱신, 끝나면 최종 시간 하나만 (첫 글자 시간은 title에). `SLOW_MS`(3초) 넘으면 시간이 강조색 + 본문 아래 ⏳ 안내(글자가 나오는 중인지, 10초 넘게 무응답인지에 따라 문구 다름), 완료·오류·취소 시 사라짐
 - host 시간 초과는 **무응답 45초**(출력이 계속 오면 오래 걸려도 OK). 취소도 host.log에 `req cancel`로 남음
 - 오류는 provider가 `ProviderError(message, {code, needsSetup})`로 던짐. `needsSetup`이면 툴팁에 "설정 열기"
 - `apiBase`는 UI에 노출 안 된 테스트용 오버라이드

@@ -25,7 +25,8 @@ const server = http.createServer((req, res) => {
       const out = isWord ? '강둑 (명사)\n은행 · 둑 · 비축' : '그녀는 강둑에 앉아 배들이 떠내려가는 것을 지켜보았다.';
       const parts = out.match(/.{1,4}/gs);
       res.write('event: message_start\ndata: {"type":"message_start"}\n\n');
-      let i = 0; const t = setInterval(() => { if (i < parts.length) { res.write(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: parts[i++] } })}\n\n`); } else { res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n'); res.end(); clearInterval(t); } }, 20);
+      const delay = j.messages[0].content.includes('SLOWTEXT') ? 3500 : 0; // 느린 응답 흉내
+      let i = 0; setTimeout(() => { const t = setInterval(() => { if (i < parts.length) { res.write(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: parts[i++] } })}\n\n`); } else { res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n'); res.end(); clearInterval(t); } }, 20); }, delay);
     });
     return;
   }
@@ -36,6 +37,7 @@ const server = http.createServer((req, res) => {
   <p id="p2">The quick brown fox jumps over the lazy dog.</p>
   <p id="p3">한국어 문장은 무시되어야 합니다.</p>
   <p id="long" style="font-size:4px">${'The river bank was quiet in the morning. '.repeat(170)}</p>
+  <p id="slow">SLOWTEXT this one takes a while to answer.</p>
   <p id="huge" style="font-size:2px">${'Too much text to translate at once. '.repeat(600)}</p></body>`);
 });
 
@@ -90,7 +92,7 @@ async function runSuite(edition) {
     // hover "bank"
     await hoverBank();
     const h1 = await tipText(); check('hover shows contextual meaning', h1 && !h1.hidden && h1.src === 'bank' && h1.body.startsWith('강둑'));
-    check('timing label is single total or first·total', /^\d+\.\ds$|^첫 \d+\.\ds · \d+\.\ds$/.test(h1?.meta || ''), JSON.stringify(h1?.meta));
+    check('final time shown as seconds', /^\d+\.\ds$/.test(h1?.meta || ''), JSON.stringify(h1?.meta));
     check('context marks target word', /⟦bank⟧/.test(log[0]?.body.messages[0].content || ''));
     // move away -> hide
     await moveAway();
@@ -126,6 +128,19 @@ async function runSuite(edition) {
     const hugeLen = await selectAll('huge'); await page.waitForTimeout(500);
     const g1 = await tipText();
     check('over-limit selection shows a message instead of nothing', hugeLen > 20000 && !g1.hidden && g1.body.includes('너무 깁니다') && log.length === nH, JSON.stringify(g1));
+    await page.mouse.click(900, 550); await page.waitForTimeout(200);
+    // 느린 응답: 경과 시간이 실시간으로 올라가고, 3초가 지나면 안내 → 끝나면 안내 사라지고 최종 시간
+    const slowState = () => page.evaluate(() => { const r = document.querySelector('claude-tip-translate').shadowRoot; return { meta: r.querySelector('.meta').textContent, late: r.querySelector('.meta').classList.contains('late'), slow: r.querySelector('.slow').hidden ? null : r.querySelector('.slow').textContent, body: r.querySelector('.body').innerText }; });
+    await selectAll('slow');
+    await page.waitForTimeout(1500);
+    const sw1 = await slowState();
+    await page.waitForTimeout(2000);
+    const sw2 = await slowState();
+    check('elapsed time ticks while waiting', parseFloat(sw1.meta) >= 1.0 && parseFloat(sw1.meta) < 2.5 && parseFloat(sw2.meta) > parseFloat(sw1.meta) && !sw1.slow, JSON.stringify([sw1, sw2]));
+    check('slow notice after 3s', parseFloat(sw2.meta) >= 3 && sw2.late && /오래 걸리고/.test(sw2.slow || ''), JSON.stringify(sw2));
+    await page.waitForTimeout(2500);
+    const sw3 = await slowState();
+    check('notice cleared and final time shown when done', sw3.body.includes('강둑') && sw3.slow === null && !sw3.late && /^\d+\.\ds$/.test(sw3.meta) && parseFloat(sw3.meta) >= 3.5, JSON.stringify(sw3));
     await page.mouse.click(900, 550); await page.waitForTimeout(200);
     // cache: hover bank again
     await page.mouse.click(900, 550); await page.waitForTimeout(200);
