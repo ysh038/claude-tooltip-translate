@@ -25,7 +25,7 @@ const server = http.createServer((req, res) => {
       const out = isWord ? '강둑 (명사)\n은행 · 둑 · 비축' : '그녀는 강둑에 앉아 배들이 떠내려가는 것을 지켜보았다.';
       const parts = out.match(/.{1,4}/gs);
       res.write('event: message_start\ndata: {"type":"message_start"}\n\n');
-      const delay = j.messages[0].content.includes('SLOWTEXT') ? 3500 : 0; // 느린 응답 흉내
+      const delay = j.messages[0].content.includes('SLOWTEXT') ? 4000 : 0; // 느린 응답 흉내
       let i = 0; setTimeout(() => { const t = setInterval(() => { if (i < parts.length) { res.write(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: parts[i++] } })}\n\n`); } else { res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n'); res.end(); clearInterval(t); } }, 20); }, delay);
     });
     return;
@@ -65,21 +65,25 @@ function installTestHost(profile) {
   fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(hostManifest({ name, runPath, extId })));
   return extId;
 }
-const fakeClaudeCalls = () => { try { return fs.readFileSync(path.join(SP, 'fake-claude.log'), 'utf8').split('\n').filter((l) => l.includes('"msg"')).length; } catch { return 0; } };
+const fakeClaudeMsgs = () => { try { return fs.readFileSync(path.join(SP, 'fake-claude.log'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((e) => e.event === 'msg'); } catch { return []; } };
 
 async function runSuite(edition) {
   prefix = `[${edition}] `;
   log = [];
   const ext = await buildForTest(edition);
   const profile = path.join(SP, 'profile-' + edition);
-  const hasCli = loadEdition(edition).providers.includes('claude-cli');
-  const expectId = hasCli ? installTestHost(profile) : null;
+  const providers = loadEdition(edition).providers;
+  const cli = providers[0] === 'claude-cli'; // 개인용: claude -p만 / store: Claude API가 기본
+  const expectId = cli ? installTestHost(profile) : null;
   const ctx = await chromium.launchPersistentContext(profile, { headless: true, channel: 'chromium', args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`], viewport: { width: 1000, height: 600 } });
+  // 엔진에 상관없이 "번역 요청 수"와 "마지막 요청 내용"
+  const calls = () => (cli ? fakeClaudeMsgs().length : log.length);
+  const lastReq = () => (cli ? fakeClaudeMsgs().at(-1) : log.at(-1)?.body) || {};
+  const lastContent = () => (cli ? lastReq().content : lastReq().messages?.[0].content) || '';
   try {
     let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('serviceworker');
     if (expectId) check('personal build has fixed extension ID', sw.url().split('/')[2] === expectId);
-    // 공통 테스트는 Claude API(가짜 SSE 서버)로
-    await sw.evaluate((port) => chrome.storage.local.set({ apiKey: 'test-key', apiBase: `http://localhost:${port}`, hoverEngine: 'anthropic-api', selectionEngine: 'anthropic-api' }), PORT);
+    if (!cli) await sw.evaluate((port) => chrome.storage.local.set({ apiKey: 'test-key', apiBase: `http://localhost:${port}` }), PORT);
     const page = (await ctx.pages())[0] || await ctx.newPage();
     await page.goto(`http://localhost:${PORT}/`);
     await page.waitForTimeout(500);
@@ -88,28 +92,33 @@ async function runSuite(edition) {
     const bankPos = await page.evaluate(() => { const b = document.querySelector('#p1 b').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
     const hoverBank = async (wait = 1200) => { await page.mouse.move(bankPos.x - 5, bankPos.y); await page.mouse.move(bankPos.x, bankPos.y); await page.waitForTimeout(wait); };
     const moveAway = async () => { await page.mouse.move(900, 550); await page.waitForTimeout(500); };
+    const clearTip = async () => { await page.mouse.click(900, 550); await page.waitForTimeout(200); };
 
     // hover "bank"
-    await hoverBank();
-    const h1 = await tipText(); check('hover shows contextual meaning', h1 && !h1.hidden && h1.src === 'bank' && h1.body.startsWith('강둑'));
+    await hoverBank(1500);
+    const h1 = await tipText(); check('hover shows contextual meaning', h1 && !h1.hidden && h1.src === 'bank' && h1.body.startsWith('강둑'), JSON.stringify(h1));
     check('final time shown as seconds', /^\d+\.\ds$/.test(h1?.meta || ''), JSON.stringify(h1?.meta));
-    check('context marks target word', /⟦bank⟧/.test(log[0]?.body.messages[0].content || ''));
+    check('context marks target word', /⟦bank⟧/.test(lastContent()));
+    if (!cli) {
+      const b = lastReq();
+      check('API request: latest Haiku, thinking off, no temperature', b.model === 'claude-haiku-5-5' && b.thinking?.type === 'disabled' && !('temperature' in b), JSON.stringify({ model: b.model, thinking: b.thinking, t: b.temperature }));
+    }
     // move away -> hide
     await moveAway();
     const h2 = await tipText(); check('hover tooltip hides on leave', h2.hidden);
     // hover korean -> no request
-    const n0 = log.length;
+    const n0 = calls();
     const k = await page.evaluate(() => { const b = document.querySelector('#p3').getBoundingClientRect(); return { x: b.x + 30, y: b.y + b.height / 2 }; });
     await page.mouse.move(k.x, k.y); await page.waitForTimeout(900);
-    check('korean word hover skipped', log.length - n0 === 0);
+    check('korean word hover skipped', calls() - n0 === 0);
     // select sentence p1
     const p = await page.evaluate(() => { const b = document.querySelector('#p1').getBoundingClientRect(); return { x: b.x, y: b.y, height: b.height }; });
-    await page.mouse.move(p.x + 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 500, p.y + p.height / 2, { steps: 5 }); await page.mouse.up();
-    await page.waitForTimeout(800);
+    const dragP1 = async () => { await page.mouse.move(p.x + 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 500, p.y + p.height / 2, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(1200); };
+    await dragP1();
     const s1 = await tipText(); check('selection translates', !s1.hidden && s1.src === '선택 번역' && s1.body.includes('강둑'));
     // dblclick word fox -> word mode
     const f = await page.evaluate(() => { const p = document.querySelector('#p2'); const r = document.createRange(); const t = p.firstChild; const i = t.data.indexOf('fox'); r.setStart(t, i); r.setEnd(t, i + 3); const b = r.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
-    await page.mouse.dblclick(f.x, f.y); await page.waitForTimeout(800);
+    await page.mouse.dblclick(f.x, f.y); await page.waitForTimeout(1200);
     const d1 = await tipText(); check('double-click uses word mode', !d1.hidden && d1.src === 'fox');
     // 긴 선택(5000자 초과)도 번역, 한도(20000자) 초과는 안내
     const selectAll = (id) => page.evaluate((id) => {
@@ -118,18 +127,18 @@ async function runSuite(edition) {
       document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 300, clientY: 200, bubbles: true }));
       return sel.toString().length;
     }, id);
-    await page.mouse.click(900, 550); await page.waitForTimeout(200);
-    const nL = log.length;
-    const longLen = await selectAll('long'); await page.waitForTimeout(1200);
+    await clearTip();
+    const nL = calls();
+    const longLen = await selectAll('long'); await page.waitForTimeout(1500);
     const l1 = await tipText();
-    check('long selection (>5000 chars) is translated', longLen > 5000 && !l1.hidden && l1.body.includes('강둑') && log.length === nL + 1 && log.at(-1).body.messages[0].content.length > 5000, `len=${longLen}`);
-    await page.mouse.click(900, 550); await page.waitForTimeout(200);
-    const nH = log.length;
+    check('long selection (>5000 chars) is translated', longLen > 5000 && !l1.hidden && l1.body.includes('강둑') && calls() === nL + 1 && lastContent().length > 5000, `len=${longLen}`);
+    await clearTip();
+    const nH = calls();
     const hugeLen = await selectAll('huge'); await page.waitForTimeout(500);
     const g1 = await tipText();
-    check('over-limit selection shows a message instead of nothing', hugeLen > 20000 && !g1.hidden && g1.body.includes('너무 깁니다') && log.length === nH, JSON.stringify(g1));
-    await page.mouse.click(900, 550); await page.waitForTimeout(200);
-    // 느린 응답: 경과 시간이 실시간으로 올라가고, 3초가 지나면 안내 → 끝나면 안내 사라지고 최종 시간
+    check('over-limit selection shows a message instead of nothing', hugeLen > 20000 && !g1.hidden && g1.body.includes('너무 깁니다') && calls() === nH, JSON.stringify(g1));
+    await clearTip();
+    // 느린 응답(4s): 경과 시간이 실시간으로 올라가고, 3초가 지나면 안내 → 끝나면 안내 사라지고 최종 시간
     const slowState = () => page.evaluate(() => { const r = document.querySelector('claude-tip-translate').shadowRoot; return { meta: r.querySelector('.meta').textContent, late: r.querySelector('.meta').classList.contains('late'), slow: r.querySelector('.slow').hidden ? null : r.querySelector('.slow').textContent, body: r.querySelector('.body').innerText }; });
     await selectAll('slow');
     await page.waitForTimeout(1500);
@@ -138,73 +147,91 @@ async function runSuite(edition) {
     const sw2 = await slowState();
     check('elapsed time ticks while waiting', parseFloat(sw1.meta) >= 1.0 && parseFloat(sw1.meta) < 2.5 && parseFloat(sw2.meta) > parseFloat(sw1.meta) && !sw1.slow, JSON.stringify([sw1, sw2]));
     check('slow notice after 3s', parseFloat(sw2.meta) >= 3 && sw2.late && /오래 걸리고/.test(sw2.slow || ''), JSON.stringify(sw2));
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(3000);
     const sw3 = await slowState();
     check('notice cleared and final time shown when done', sw3.body.includes('강둑') && sw3.slow === null && !sw3.late && /^\d+\.\ds$/.test(sw3.meta) && parseFloat(sw3.meta) >= 3.5, JSON.stringify(sw3));
-    await page.mouse.click(900, 550); await page.waitForTimeout(200);
+    await clearTip();
     // cache: hover bank again
-    await page.mouse.click(900, 550); await page.waitForTimeout(200);
-    const n1 = log.length;
+    const n1 = calls();
     await hoverBank(900);
-    const c1 = await tipText(); check('repeat hover served from cache', c1.meta === '캐시' && log.length - n1 === 0);
+    const c1 = await tipText(); check('repeat hover served from cache', c1.meta === '캐시' && calls() - n1 === 0);
     await moveAway();
 
-    // 엔진 분리: hover = 아직 준비 중인 chrome-builtin → 설정 안내, 드래그는 계속 anthropic-api
-    await sw.evaluate(() => chrome.storage.local.set({ hoverEngine: 'chrome-builtin', selectionEngine: 'anthropic-api' }));
-    await page.waitForTimeout(100);
-    const n2 = log.length;
-    await hoverBank(900);
-    const e1 = await tipText();
-    check('unavailable hover engine shows setup error', !e1.hidden && e1.body.includes('준비 중') && e1.link && log.length - n2 === 0);
-    await moveAway();
-    await page.mouse.move(p.x + 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 500, p.y + p.height / 2, { steps: 5 }); await page.mouse.up();
-    await page.waitForTimeout(800);
-    const s2 = await tipText(); check('selection engine independent of hover engine', !s2.hidden && s2.body.includes('강둑'));
     // 이 에디션에 없는 엔진 id가 저장돼 있으면 첫 provider로 대체
-    await page.mouse.click(900, 550);
     await sw.evaluate(() => chrome.storage.local.set({ hoverEngine: 'no-such-engine' }));
     await page.waitForTimeout(100);
-    await hoverBank(900);
+    await page.mouse.move(f.x, f.y - 40); await page.waitForTimeout(100);
+    await hoverBank(1500);
     const u1 = await tipText(); check('unknown engine id falls back', !u1.hidden && u1.body.startsWith('강둑'));
     await moveAway();
-    await sw.evaluate(() => chrome.storage.local.set({ hoverEngine: 'anthropic-api' }));
+    await sw.evaluate(() => chrome.storage.local.remove('hoverEngine'));
 
-    // options page
-    const extId = sw.url().split('/')[2];
-    const op = await ctx.newPage(); await op.goto(`chrome-extension://${extId}/options.html`); await op.waitForTimeout(400);
-    const engines = await op.$$eval('#hoverEngine option', (os) => os.map((o) => o.value));
-    check('options lists edition engines', JSON.stringify(engines) === JSON.stringify(loadEdition(edition).providers));
-    check('options shows engine availability', (await op.textContent('#hoverEngineStatus')).includes('사용 가능'));
-    await op.click('#runTest'); await op.waitForTimeout(800);
-    check('options page test translation', (await op.textContent('#testOut')).includes('강둑'));
-    // 설정 화면에서 엔진 변경 → storage 반영 + 상태 표시
-    await op.selectOption('#selectionEngine', 'chrome-builtin'); await op.waitForTimeout(300);
-    const st = await sw.evaluate(() => chrome.storage.local.get('selectionEngine'));
-    check('options saves engine choice', st.selectionEngine === 'chrome-builtin' && (await op.textContent('#selectionEngineStatus')).includes('준비 중'));
-    const pp = await ctx.newPage(); await pp.setViewportSize({ width: 280, height: 200 }); await pp.goto(`chrome-extension://${extId}/popup.html`); await pp.waitForTimeout(300);
-    check('popup warns about unavailable engine', (await pp.textContent('#status')).includes('준비 중'));
-
-    if (hasCli) {
-      // claude -p 엔진 (native host + 가짜 claude). 저장값을 지우면 개인용 기본값(claude-cli)으로
-      await sw.evaluate(() => chrome.storage.local.remove(['hoverEngine', 'selectionEngine']));
-      await op.reload(); await op.waitForTimeout(1500);
-      check('claude-cli is default engine in personal', (await op.inputValue('#hoverEngine')) === 'claude-cli' && (await op.inputValue('#selectionEngine')) === 'claude-cli');
-      check('claude-cli available via native host', (await op.textContent('#hoverEngineStatus')).includes('사용 가능'));
-      check('claude-cli settings section rendered', (await op.inputValue('#cliModel')) === 'haiku');
-      await page.bringToFront();
-      const nApi = log.length, nCli = fakeClaudeCalls();
-      await page.mouse.click(900, 550); await page.waitForTimeout(200);
-      await hoverBank(1500);
-      const ch = await tipText();
-      check('hover via claude -p', !ch.hidden && ch.body.startsWith('강둑') && log.length === nApi && fakeClaudeCalls() === nCli + 1, JSON.stringify(ch));
+    if (providers.length > 1) {
+      // 엔진 분리: hover = 아직 준비 중인 chrome-builtin → 설정 안내, 드래그는 계속 기본 엔진
+      await sw.evaluate(() => chrome.storage.local.set({ hoverEngine: 'chrome-builtin' }));
+      await page.waitForTimeout(100);
+      const n2 = calls();
+      await hoverBank(900);
+      const e1 = await tipText();
+      check('unavailable hover engine shows setup error', !e1.hidden && e1.body.includes('준비 중') && e1.link && calls() - n2 === 0);
       await moveAway();
-      await page.mouse.move(p.x + 2, p.y + p.height / 2); await page.mouse.down(); await page.mouse.move(p.x + 500, p.y + p.height / 2, { steps: 5 }); await page.mouse.up();
-      await page.waitForTimeout(1500);
-      const cs = await tipText();
-      check('selection via claude -p', !cs.hidden && cs.body.includes('강둑') && log.length === nApi);
-      await page.mouse.click(900, 550);
-      const cp = await ctx.newPage(); await cp.setViewportSize({ width: 280, height: 200 }); await cp.goto(`chrome-extension://${extId}/popup.html`); await cp.waitForTimeout(800);
-      check('popup shows claude -p engine', (await cp.textContent('#status')).includes('claude -p'));
+      await dragP1();
+      const s2 = await tipText(); check('selection engine independent of hover engine', !s2.hidden && s2.body.includes('강둑'));
+      await clearTip();
+      await sw.evaluate(() => chrome.storage.local.remove('hoverEngine'));
+    }
+
+    // 설정 페이지
+    const extId = sw.url().split('/')[2];
+    const op = await ctx.newPage(); await op.goto(`chrome-extension://${extId}/options.html`); await op.waitForTimeout(1200);
+    const apiSectionHidden = await op.$eval('section[data-provider="anthropic-api"]', (el) => el.hidden);
+    if (providers.length === 1) {
+      check('single engine: no engine picker, name + status shown', (await op.isHidden('#engineMulti')) && (await op.textContent('#engineName')).includes('claude -p') && (await op.textContent('#engineStatus')).includes('사용 가능'), await op.textContent('#engineStatus'));
+    } else {
+      const engines = await op.$$eval('#hoverEngine option', (os) => os.map((o) => o.value));
+      check('options lists edition engines', JSON.stringify(engines) === JSON.stringify(providers));
+      check('options shows engine availability', (await op.textContent('#hoverEngineStatus')).includes('사용 가능'));
+    }
+    check('API section only in builds with the API engine', apiSectionHidden === !providers.includes('anthropic-api'));
+    const modelKey = cli ? 'cliModel' : 'model';
+    const modelOpts = await op.$$eval(`#${modelKey} option`, (os) => os.map((o) => o.value));
+    check('options model select lists latest-only choices', JSON.stringify(modelOpts) === JSON.stringify(cli ? ['haiku', 'sonnet', 'opus'] : ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5']), JSON.stringify(modelOpts));
+    await op.click('#runTest'); await op.waitForTimeout(1500);
+    check('options page test translation', (await op.textContent('#testOut')).includes('강둑'));
+    if (providers.length > 1) {
+      await op.selectOption('#selectionEngine', 'chrome-builtin'); await op.waitForTimeout(300);
+      const st = await sw.evaluate(() => chrome.storage.local.get('selectionEngine'));
+      check('options saves engine choice', st.selectionEngine === 'chrome-builtin' && (await op.textContent('#selectionEngineStatus')).includes('준비 중'));
+      const pw = await ctx.newPage(); await pw.setViewportSize({ width: 280, height: 260 }); await pw.goto(`chrome-extension://${extId}/popup.html`); await pw.waitForTimeout(500);
+      check('popup warns about unavailable engine', (await pw.textContent('#status')).includes('준비 중'));
+      await pw.close();
+      await sw.evaluate(() => chrome.storage.local.remove('selectionEngine'));
+    }
+
+    // 툴바 팝업: 모델 세그먼트 버튼
+    const pp = await ctx.newPage(); await pp.setViewportSize({ width: 280, height: 300 }); await pp.goto(`chrome-extension://${extId}/popup.html`); await pp.waitForTimeout(800);
+    const segs = await pp.$$eval('.seg button', (bs) => bs.map((b) => ({ t: b.textContent, on: b.getAttribute('aria-checked') })));
+    check('popup shows one model picker (Haiku/Sonnet/Opus), Haiku selected', JSON.stringify(segs) === JSON.stringify([{ t: 'Haiku', on: 'true' }, { t: 'Sonnet', on: 'false' }, { t: 'Opus', on: 'false' }]), JSON.stringify(segs));
+    check('popup status shows engine', (await pp.textContent('#status')).includes(cli ? 'claude -p · haiku' : 'claude-haiku-5-5'), await pp.textContent('#status'));
+    await pp.click('.seg button:nth-child(2)'); await pp.waitForTimeout(800);
+    const saved = await sw.evaluate((k) => chrome.storage.local.get(k), modelKey);
+    const sonnet = cli ? 'sonnet' : 'claude-sonnet-5-5';
+    check('popup model click saves and updates', saved[modelKey] === sonnet && (await pp.getAttribute('.seg button:nth-child(2)', 'aria-checked')) === 'true' && (await pp.textContent('#status')).includes(cli ? 'claude -p · sonnet' : sonnet) && (await pp.textContent('.phint')).includes('자연스러운'));
+    check('options page follows popup model change', (await op.inputValue(`#${modelKey}`)) === sonnet);
+    // 바뀐 모델로 실제 요청 (캐시 키에 모델 포함 → 같은 단어도 새로 요청)
+    await page.bringToFront();
+    const n3 = calls();
+    await hoverBank(1500);
+    const m1 = await tipText();
+    const r = lastReq();
+    check('next translation uses the new model', !m1.hidden && m1.body.startsWith('강둑') && calls() === n3 + 1 && (cli ? r.model === 'sonnet' : r.model === sonnet && r.thinking?.type === 'between_tools'), JSON.stringify({ model: r.model, thinking: r.thinking }));
+    await moveAway();
+    if (!cli) {
+      await sw.evaluate(() => chrome.storage.local.set({ model: 'claude-opus-5-5' }));
+      await dragP1();
+      const o = lastReq();
+      check('API Opus request: effort low, thinking not disabled, max_tokens floor', o.model === 'claude-opus-5-5' && o.output_config?.effort === 'low' && !o.thinking && o.max_tokens >= 4000, JSON.stringify({ oc: o.output_config, th: o.thinking, mt: o.max_tokens }));
+      await clearTip();
     }
   } finally {
     await ctx.close();

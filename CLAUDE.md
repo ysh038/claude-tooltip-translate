@@ -12,7 +12,7 @@
 ```
 src/        확장 진입점·정적 파일: background.js, content.js, options.*, popup.*, ui.css, icons/, manifest.json(베이스)
 core/       settings.js(DEFAULTS·EDITION), prompts.js, provider.js(인터페이스·ProviderError), engines.js(선택 로직), cache.js
-providers/  anthropic-api.js, claude-cli.js(구현됨) / chrome-builtin.js(1단계용 자리, available()=false)
+providers/  anthropic-api.js, claude-cli.js(구현됨) / chrome-builtin.js(store용 자리, available()=false)
 native-host/ host.mjs(native messaging), claude-pool.mjs(claude -p 프로세스 풀), install.mjs — 개인용 전용
 editions/   personal.json, store.json — providers 목록, manifest 덮어쓰기, 기본 설정
 scripts/    build.mjs(esbuild → dist/<에디션>), check-store.mjs, edition-rules.mjs(개인용 전용 목록), ext-id.mjs
@@ -30,7 +30,13 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 - 오류는 provider가 `ProviderError(message, {code, needsSetup})`로 던짐. `needsSetup`이면 툴팁에 "설정 열기"
 - `apiBase`는 UI에 노출 안 된 테스트용 오버라이드
 - provider는 `settings`(선택 항목)·`help`를 선언하면 옵션 페이지에 섹션이 자동 생성됨 → 개인용 전용 문구가 공용 HTML에 들어가지 않게
-- **개인용 기본 엔진 = `claude-cli`** (hover·드래그 둘 다, 모델 `haiku`) — 사용자가 지금 API 키를 쓸 수 없음
+- **개인용 빌드의 엔진은 `claude-cli` 하나뿐** (2026-11-06 사용자 결정: "claude -p 외에는 없어도 됨"). 설정 페이지는 엔진이 하나면 선택 칸 대신 이름·상태만, 빌드에 없는 엔진 전용 섹션(`[data-provider]`, 예: Claude API)은 숨김
+- 모델 선택: provider가 `models: { key, choices: [{value,label,hint}] }`로 **계열별 최신 모델만** 선언 → 설정 페이지(select)와 **툴바 팝업(세그먼트 버튼 Haiku/Sonnet/Opus)**에 자동 표시. 저장값이 목록에 없으면(예전 id) `modelChoices()`가 끝에 붙여 보여줌
+  - claude-cli: `haiku`/`sonnet`/`opus` 별칭(항상 최신). 실측 2026-11-06 대기 프로세스·단어 1개: 세 모델 모두 완성 ~1.2~1.7s, Opus는 구독 사용량을 더 씀
+  - anthropic-api: `claude-haiku-5-5`/`claude-sonnet-5-5`/`claude-opus-5-5`. `requestOptions()`: Haiku는 thinking disabled, Sonnet은 `between_tools`(disabled는 400), Opus는 thinking을 못 끄므로 effort low + max_tokens 하한 4000. 5.5 세대는 temperature를 보내면 400이라 안 보냄 — **실제 API 키로는 미검증**
+- popup/options는 엔진 상태를 직접 확인하지 않고 background에 `{type:'engineStatus'}`로 물음 (`core/status-client.js`). 직접 `available()`을 부르면 claude-cli가 그 페이지만의 native host와 대기 claude 프로세스를 따로 띄웠다 버림
+- claude는 content block마다 `assistant` 이벤트를 보냄 → host는 **text 블록이 든 assistant에서만** 완료 처리 (thinking만 든 이벤트에서 끝내 빈 번역이 나오던 버그, Haiku 5.5에서 발생)
+- `ui.css`에 전역 `[hidden] { display: none !important }` — `.grid2`처럼 display를 지정한 요소에 hidden이 안 먹던 문제
 - claude-cli 흐름: background가 `connectNative('dev.claude_tooltip_translate.cli')` 포트 1개를 계속 열고 요청을 id로 구분 → host가 프로세스 풀로 처리
   - 개인용 manifest에 `key` 고정 → 확장 ID `jholkpnnifillalfkbgodapgegfadipe` (host manifest의 allowed_origins와 일치해야 함)
   - 설치: `npm run host:install` → host 코드를 `~/Library/Application Support/claude-tooltip-translate/host/`로 **복사**하고 거기에 `config.json`(claude 절대 경로)·`run.sh`(node 경로, stderr → 로그) 생성, 브라우저별 `NativeMessagingHosts/*.json` 등록. **`native-host/*.mjs`를 고치면 다시 실행해야 반영됨**
@@ -39,7 +45,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
   - 터미널에서 바로 확인: `npm run host:test -- "문장"`
   - rate_limit_event(구독 한도 상태)는 `chrome.storage.session.cliRateLimit`에 저장만 해 둠 (표시는 아직)
 - 검사: `npm run check:store`(store 빌드 후 nativeMessaging·manifest key·`claude-cli`/`connectNative`/`claude -p` 문자열 검사). `build.mjs`도 store 에디션에 개인용 전용 provider가 있으면 빌드 거부
-- `npm test` = check:store + test:host(18개, 임시 HOME에 설치해 최소 환경 ping까지) + e2e(39개). e2e는 personal·store 두 빌드 각각에 대해 가짜 SSE 서버 + Playwright로 hover/드래그/더블클릭/캐시/엔진 분리/옵션/팝업, personal은 가짜 claude로 native host 경유 hover/드래그까지 검증
+- `npm test` = check:store + test:host(21개, 임시 HOME에 설치해 최소 환경 ping까지) + e2e(56개). e2e는 각 빌드의 기본 엔진으로 같은 시나리오를 돌림 — personal은 가짜 claude(native host 경유), store는 가짜 SSE 서버. hover/드래그/더블클릭/긴 선택/느린 응답/캐시/설정/팝업 모델 선택, store는 엔진 분리와 API 요청 형식(모델별 thinking 등)까지
   - 확장 로드 시 headless는 `channel: 'chromium'` 필요
   - Chromium은 `<user-data-dir>/NativeMessagingHosts/`의 host manifest를 읽음 → 테스트는 임시 프로필에 등록 (사용자 Chrome 설정 안 건드림)
 - CI 설정 파일은 아직 없음 → 원격 저장소 생기면 `npm ci && npx playwright install chromium && npm test`
@@ -52,7 +58,7 @@ tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사
 4. **`claude-cli` provider와 native host는 개인용 빌드에만.** store 빌드에 섞이면 CI에서 실패하게 할 것
    - 이유: Anthropic은 Free/Pro/Max 구독 OAuth를 다른 제품·도구·Agent SDK에서 쓰는 것과, 구독 자격증명으로 사용자 요청을 대신 처리하는 것을 금지(2026-02). 공식 Claude Code 바이너리에 본인 구독으로 로그인하는 건 허용되지만, 스크립트 자동 호출은 문서상 명시되지 않은 회색지대 → 개인용에서만 본인 판단으로 사용
    - https://code.claude.com/docs/en/legal-and-compliance
-5. **개인용 hover = 2단계 표시**: Chrome 내장 Translator로 즉시 직역 → `claude -p`의 문맥 기반 결과로 교체
+5. ~~개인용 hover = 2단계 표시 (Chrome 내장 Translator → claude -p)~~ → **취소 (2026-11-06)**: 개인용은 claude -p만 사용. 대기 프로세스로 hover도 1~2초라 충분. chrome-builtin 자리는 store 빌드에만 남김
 6. **개인용 hover·드래그 번역 = `claude -p`, 요청 1개 = 프로세스 1개 + 대기 프로세스 미리 띄우기** (2026-11-05 변경)
    - (모델, 시스템 프롬프트)별로 `claude -p --input-format stream-json …` 프로세스를 1개씩 미리 띄워 둠 → 요청이 오면 그 프로세스에 보내고, `assistant` 이벤트(답 완성)에서 바로 결과 반환 → 직후 `rate_limit_event`만 받고(최대 300ms) 종료 → 새 대기 프로세스 보충
    - 원래 계획(한 프로세스 상주, 20~30회마다 재시작)에서 바꾼 이유: 옵션을 줄이니 시동 비용이 0.3s로 작아졌고, 한 프로세스에 계속 보내면 답 뒤의 `post_turn_summary`(추가 모델 호출, ~1.5s)가 끝나야 다음 요청을 받음. 프로세스를 바로 끝내면 문맥 누적·추가 호출·취소 처리가 모두 해결됨

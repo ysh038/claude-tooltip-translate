@@ -4,7 +4,7 @@ export const EDITION = __EDITION__;
 
 export const DEFAULTS = {
   apiKey: '',
-  model: 'claude-haiku-4-5',
+  model: 'claude-haiku-5-5',      // anthropic-api 모델 (최신 세대만 선택지로 제공)
   targetLang: 'ko',
   fallbackLang: 'en',        // 이미 목표 언어인 텍스트를 만났을 때 번역할 언어
   hoverEnabled: true,

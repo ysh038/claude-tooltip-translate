@@ -109,6 +109,8 @@ class Worker {
     } else if (e.type === 'assistant') {
       const text = (e.message?.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
       if (e.error) return this.fail(String(e.error).toUpperCase(), text || String(e.error));
+      // claude는 content block마다 assistant 이벤트를 보냄 — thinking만 든 이벤트에서 끝내면 빈 번역이 됨 (Haiku 5.5에서 실제 발생)
+      if (!(e.message?.content || []).some((c) => c.type === 'text')) return;
       this.finish(text || this.text);
     } else if (e.type === 'result' && e.is_error) {
       this.fail('RESULT_ERROR', typeof e.result === 'string' ? e.result : 'claude 실행 오류');

@@ -54,8 +54,21 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'openOptions') chrome.runtime.openOptionsPage();
+  if (msg?.type === 'engineStatus') {
+    // 엔진 상태 확인은 항상 여기(background)에서 — claude-cli는 이때 새 설정(모델)용 대기 프로세스도 띄움
+    (async () => {
+      const s = await chrome.storage.local.get(DEFAULTS);
+      const out = {};
+      for (const src of ['hover', 'selection']) {
+        const p = engineFor(src, s);
+        out[src] = { id: p.id, ...(await p.available(s).catch((e) => ({ ok: false, reason: e.message }))) };
+      }
+      sendResponse(out);
+    })();
+    return true; // 비동기 응답
+  }
 });
 
 chrome.commands.onCommand.addListener(async (cmd) => {

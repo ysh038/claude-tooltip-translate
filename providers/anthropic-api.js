@@ -21,8 +21,23 @@ function friendly(status, message, s) {
   return new ProviderError(message || `HTTP ${status}`, { code: status || 'ERR' });
 }
 
+// 최신 세대 모델별 요청 옵션 — 번역은 깊은 추론이 필요 없으니 thinking을 끄거나 최소로 (속도 우선)
+//  - Haiku 5.5: thinking 기본 켜짐, disabled 허용(effort high 이하)
+//  - Sonnet 5.5: disabled는 400 → between_tools(도구가 없으니 사실상 꺼짐)
+//  - Opus 5.5: thinking을 끌 수 없음 → effort low
+//  - 5.5 세대는 temperature 등 샘플링 값을 보내면 400 → 보내지 않음
+// (2026-11-06 claude-api 문서 기준. 실제 API 키로는 아직 검증 안 함)
+export function requestOptions(model) {
+  if (/^claude-haiku-5-5/.test(model)) return { body: { thinking: { type: 'disabled' } } };
+  if (/^claude-sonnet-5-5/.test(model)) return { body: { thinking: { type: 'between_tools' } } };
+  // thinking 토큰도 max_tokens에 포함 → 단어 모드(80~160)에서 답이 잘리지 않게 하한
+  if (/^claude-opus-5-5/.test(model)) return { body: { output_config: { effort: 'low' } }, minTokens: 4000 };
+  return {};
+}
+
 async function translate(req, { signal, onDelta = () => {}, settings: s }) {
   const { system, user, maxTokens } = buildPrompt(req, s);
+  const opt = requestOptions(s.model);
   let res;
   try {
     res = await fetch(`${s.apiBase}/v1/messages`, {
@@ -31,8 +46,8 @@ async function translate(req, { signal, onDelta = () => {}, settings: s }) {
       headers: headers(s.apiKey),
       body: JSON.stringify({
         model: s.model,
-        max_tokens: maxTokens,
-        temperature: 0,
+        max_tokens: Math.max(maxTokens, opt.minTokens || 0),
+        ...opt.body,
         system,
         messages: [{ role: 'user', content: user }],
         stream: true
@@ -94,5 +109,13 @@ export default {
   },
   translate,
   cacheTag: (s) => s.model,
-  describe: (s) => s.model
+  describe: (s) => s.model,
+  models: {
+    key: 'model',
+    choices: [
+      { value: 'claude-haiku-5-5', label: 'Haiku', hint: '빠름 · 저렴 (권장)' },
+      { value: 'claude-sonnet-5-5', label: 'Sonnet', hint: '더 자연스러운 번역' },
+      { value: 'claude-opus-5-5', label: 'Opus', hint: '가장 정확 · 비쌈' }
+    ]
+  }
 };

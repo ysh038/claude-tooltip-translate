@@ -1,8 +1,6 @@
 {
   "name": "personal",
   "providers": [
-    "anthropic-api",
-    "chrome-builtin",
     "claude-cli"
   ],
   "defaults": {

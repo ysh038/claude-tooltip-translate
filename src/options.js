@@ -1,13 +1,14 @@
 import { DEFAULTS, LANGS, EDITION } from '../core/settings.js';
-import { PROVIDERS, engineFor } from '../core/engines.js';
+import { PROVIDERS, engineFor, getProvider, modelChoices } from '../core/engines.js';
 import { listModels } from '../providers/anthropic-api.js';
+import { engineStatus } from '../core/status-client.js';
 
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['apiKey', 'model', 'targetLang', 'fallbackLang', 'hoverEnabled', 'hoverModifier', 'hoverDelay',
+const FIELDS = ['apiKey', 'targetLang', 'fallbackLang', 'hoverEnabled', 'hoverModifier', 'hoverDelay',
   'hoverSkipTarget', 'showAlternatives', 'selectionEnabled', 'selectionMode', 'contextMode',
   'hoverEngine', 'selectionEngine'];
 const ENGINE_FIELDS = { hoverEngine: 'hover', selectionEngine: 'selection' };
-const PRESET_MODELS = ['claude-haiku-4-5', 'claude-sonnet-4-5'];
+const SINGLE = PROVIDERS.length === 1; // 개인용: claude -p 하나뿐 → 엔진 선택 없이 이름·상태만
 
 let savedTimer = 0;
 function flashSaved() {
@@ -23,54 +24,62 @@ function fillLangs() {
 }
 
 function fillEngines() {
+  $('engineMulti').hidden = SINGLE;
+  $('engineSingle').hidden = !SINGLE;
+  if (SINGLE) { $('engineName').textContent = PROVIDERS[0].label; return; }
   for (const id of Object.keys(ENGINE_FIELDS)) {
     $(id).innerHTML = PROVIDERS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('');
   }
 }
 
-// 선택된 엔진이 지금 쓸 수 있는 상태인지 표시
+const setStatus = (el, av) => { el.textContent = av?.ok ? '사용 가능' : '⚠ ' + (av?.reason || '알 수 없음'); el.className = av?.ok ? 'ok' : 'err'; };
+
+// 선택된 엔진이 지금 쓸 수 있는 상태인지 표시 (확인은 background가 함)
 async function refreshEngineStatus() {
   const s = await chrome.storage.local.get(DEFAULTS);
+  const st = await engineStatus();
+  if (SINGLE) return setStatus($('engineStatus'), st.hover);
   for (const [id, source] of Object.entries(ENGINE_FIELDS)) {
     const p = engineFor(source, s);
     if ($(id).value !== p.id) $(id).value = p.id; // 이 에디션에 없는 엔진이 저장돼 있던 경우
-    const st = $(id + 'Status');
-    const av = await p.available(s).catch((e) => ({ ok: false, reason: e.message }));
-    st.textContent = av.ok ? '사용 가능' : '⚠ ' + av.reason;
-    st.className = av.ok ? 'ok' : 'err';
+    setStatus($(id + 'Status'), st[source]);
   }
 }
 
-// provider가 선언한 전용 설정을 섹션으로 그린다
+// 이 빌드에 없는 엔진 전용 섹션(예: 개인용의 Claude API)은 숨김
+function hideAbsentProviders() {
+  for (const el of document.querySelectorAll('[data-provider]')) el.hidden = !getProvider(el.dataset.provider);
+}
+
+// provider가 선언한 모델 선택(models)·안내(help)를 그린다.
+// 정적 HTML에 [data-models-slot=<id>]가 있으면 그 자리에, 없으면 provider 섹션을 새로 만든다
 function renderProviderSettings(s) {
-  const box = $('providerSettings');
   for (const p of PROVIDERS) {
-    if (!p.settings?.length && !p.help) continue;
-    const sec = document.createElement('section');
-    sec.dataset.provider = p.id;
-    const h = document.createElement('h2'); h.textContent = p.label; sec.append(h);
-    if (p.help) { const d = document.createElement('p'); d.className = 'muted small'; d.textContent = p.help; sec.append(d); }
-    for (const f of p.settings || []) {
-      const label = document.createElement('label'); label.className = 'row col';
-      const span = document.createElement('span'); span.textContent = f.label;
-      const sel = document.createElement('select'); sel.id = f.key;
-      for (const [v, l] of f.choices) sel.add(new Option(l, v));
-      sel.value = s[f.key];
-      sel.addEventListener('change', async () => {
-        await chrome.storage.local.set({ [f.key]: sel.value });
-        flashSaved();
-        refreshEngineStatus();
-      });
-      label.append(span, sel); sec.append(label);
+    const mc = modelChoices(p, s);
+    if (!mc && !p.help) continue;
+    let slot = document.querySelector(`[data-models-slot="${p.id}"]`);
+    if (!slot) {
+      const sec = document.createElement('section');
+      sec.dataset.provider = p.id;
+      const h = document.createElement('h2'); h.textContent = p.label; sec.append(h);
+      if (p.help) { const d = document.createElement('p'); d.className = 'muted small'; d.textContent = p.help; sec.append(d); }
+      slot = document.createElement('div'); sec.append(slot);
+      $('providerSettings').append(sec);
     }
-    box.append(sec);
+    if (!mc) continue;
+    const label = document.createElement('label'); label.className = 'row col';
+    const span = document.createElement('span'); span.textContent = '모델';
+    const sel = document.createElement('select'); sel.id = mc.key;
+    for (const c of mc.choices) sel.add(new Option(`${c.label} — ${c.hint}`, c.value));
+    sel.value = mc.current;
+    sel.addEventListener('change', async () => {
+      await chrome.storage.local.set({ [mc.key]: sel.value });
+      flashSaved();
+      refreshEngineStatus();
+    });
+    label.append(span, sel);
+    slot.append(label);
   }
-}
-
-function fillModels(list, current) {
-  const ids = [...new Set([...(list || []), ...PRESET_MODELS, current].filter(Boolean))];
-  $('model').innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join('');
-  $('model').value = current;
 }
 
 function readField(id) {
@@ -84,8 +93,8 @@ async function init() {
   document.body.dataset.edition = EDITION.name;
   fillLangs();
   fillEngines();
-  const s = await chrome.storage.local.get({ ...DEFAULTS, modelList: [] });
-  fillModels(s.modelList, s.model);
+  hideAbsentProviders();
+  const s = await chrome.storage.local.get(DEFAULTS);
   renderProviderSettings(s);
   for (const id of FIELDS) {
     const el = $(id);
@@ -102,9 +111,17 @@ async function init() {
       if (id === 'hoverDelay') $('hoverDelayVal').textContent = el.value + 'ms';
       await chrome.storage.local.set({ [id]: readField(id) });
       flashSaved();
-      if (id in ENGINE_FIELDS || id === 'apiKey' || id === 'model') refreshEngineStatus();
+      if (id in ENGINE_FIELDS || id === 'apiKey') refreshEngineStatus();
     });
   }
+  // 팝업 등 다른 곳에서 모델을 바꾸면 여기도 반영
+  chrome.storage.onChanged.addListener((ch, area) => {
+    if (area !== 'local') return;
+    for (const p of PROVIDERS) {
+      const k = p.models?.key;
+      if (k && ch[k] && $(k) && $(k).value !== ch[k].newValue) $(k).value = ch[k].newValue;
+    }
+  });
   await refreshEngineStatus();
 }
 
@@ -121,10 +138,8 @@ $('loadModels').addEventListener('click', async () => {
   st.textContent = '확인 중…'; st.className = 'muted';
   try {
     const { apiBase } = await chrome.storage.local.get({ apiBase: DEFAULTS.apiBase });
-    const ids = await listModels(key, apiBase);
-    await chrome.storage.local.set({ modelList: ids });
-    fillModels(ids, $('model').value);
-    st.textContent = `연결 성공 · 사용 가능한 모델 ${ids.length}개를 불러왔습니다.`;
+    await listModels(key, apiBase); // 키가 유효한지만 확인 (모델은 최신 세대 고정 선택지)
+    st.textContent = '연결 성공 · API 키가 유효합니다.';
     st.className = 'ok';
   } catch (e) {
     st.textContent = '실패: ' + e.message;

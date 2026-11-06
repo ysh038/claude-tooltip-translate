@@ -93,6 +93,11 @@ try {
   h.send({ type: 'translate', id: 's', ...JOB, user: 'SLOW but fine' });
   check('slow but progressing request completes', !!(await h.waitFor((m) => m.id === 's' && m.type === 'done', 6000)));
 
+  // thinking만 든 assistant 이벤트가 먼저 와도 빈 결과로 끝나면 안 됨
+  h.send({ type: 'translate', id: 't', ...JOB, user: 'Word: THINK' });
+  const doneT = await h.waitFor((m) => m.id === 't' && m.type === 'done');
+  check('thinking-only assistant event does not end with empty text', doneT?.text.startsWith('강둑'), JSON.stringify(doneT));
+
   // 로그인 안 됨
   h.send({ type: 'translate', id: 'd', ...JOB, user: 'AUTHFAIL' });
   const errD = await h.waitFor((m) => m.id === 'd' && m.type === 'error');

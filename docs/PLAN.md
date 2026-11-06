@@ -34,8 +34,8 @@ claude-tooltip-translate/
 - [x] `providers/claude-cli`: `chrome.runtime.connectNative`로 스트리밍 수신, 개인용 기본 엔진
 - [ ] 실제 Chrome에 설치해서 사용 (`npm run host:install` — 사용자가 직접 실행)
 - [ ] 구독 한도 상태(rate_limit_event) 표시
-- [ ] `providers/chrome-builtin`: Translator API (content script에서 직접 되는지, 안 되면 offscreen document) 확인
-- [ ] hover 2단계 표시: 내장 번역 즉시 → claude 결과 오면 교체 (UI에 단계 표시)
+- ~~`providers/chrome-builtin`, hover 2단계 표시~~ → 개인용은 claude -p만 쓰기로 (2026-11-06). 상업용 단계에서 다시 검토
+- [x] 툴바 팝업에서 모델 선택 (계열별 최신만)
 - [ ] 사용량 표시(오늘 요청 수), 지연 시간 기록
 
 ## 2단계 — 직접 사용 (2~4주)

@@ -13,9 +13,10 @@
 //       사용자에게 보여줄 오류는 ProviderError로 던진다.
 //   cacheTag?(settings) → string     // 같은 입력이라도 결과가 달라지는 설정(모델 등)
 //   describe?(settings) → string     // 툴팁 메타에 표시 (예: 모델 이름)
-//   settings?: [{ key, label, type: 'select', choices: [[value, label], …] }]
-//       설정 화면에 provider별 섹션으로 자동 표시. 기본값은 editions/<name>.json의 defaults에
-//   help?: string                    // 그 섹션에 보일 안내 문구
+//   models?: { key, choices: [{ value, label, hint }] }
+//       고를 수 있는 모델 (각 계열의 최신 버전만). key = 저장되는 설정 이름.
+//       설정 화면(select)과 툴바 팝업(세그먼트 버튼)에 자동으로 표시된다
+//   help?: string                    // 설정 화면 provider 섹션에 보일 안내 문구
 // }
 
 /**

@@ -1,6 +1,13 @@
 {
   "name": "store",
-  "providers": ["anthropic-api", "chrome-builtin"],
+  "providers": [
+    "anthropic-api",
+    "chrome-builtin"
+  ],
   "defaults": {},
-  "manifest": {}
+  "manifest": {
+    "host_permissions": [
+      "https://api.anthropic.com/*"
+    ]
+  }
 }

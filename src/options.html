@@ -11,14 +11,15 @@
     <img src="icons/icon48.png" alt="" width="32" height="32">
     <div>
       <h1>Claude 툴팁 번역</h1>
-      <p class="muted">설정은 바뀌는 즉시 저장됩니다. API 키는 이 브라우저에만 저장됩니다.</p>
+      <p class="muted">설정은 바뀌는 즉시 저장됩니다.</p>
     </div>
     <span id="saved" class="saved" hidden>저장됨</span>
   </header>
 
   <section>
     <h2>번역 엔진</h2>
-    <div class="grid2">
+    <p id="engineSingle" class="row" hidden><b id="engineName"></b> <small id="engineStatus" class="muted"></small></p>
+    <div id="engineMulti" class="grid2">
       <label class="row col"><span>① 마우스 오버</span>
         <select id="hoverEngine"></select>
         <small id="hoverEngineStatus" class="muted"></small>
@@ -33,8 +34,9 @@
   <!-- provider별 설정 (provider.settings / provider.help 로 options.js가 생성) -->
   <div id="providerSettings"></div>
 
-  <section>
+  <section data-provider="anthropic-api">
     <h2>Claude API</h2>
+    <p class="muted small">API 키는 이 브라우저에만 저장됩니다.</p>
     <label class="row col">
       <span>Claude API 키</span>
       <div class="inline">
@@ -42,14 +44,11 @@
         <button id="toggleKey" type="button" class="ghost">보기</button>
       </div>
     </label>
-    <label class="row col">
-      <span>모델 <small class="muted">— 속도가 중요하면 Haiku 계열 권장</small></span>
-      <div class="inline">
-        <select id="model"></select>
-        <button id="loadModels" type="button">연결 테스트 · 모델 불러오기</button>
-      </div>
+    <div class="inline">
+      <button id="loadModels" type="button" class="ghost">연결 테스트</button>
       <small id="keyStatus" class="muted"></small>
-    </label>
+    </div>
+    <div data-models-slot="anthropic-api"></div>
   </section>
 
   <section>

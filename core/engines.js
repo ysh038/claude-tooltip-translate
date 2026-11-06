@@ -15,3 +15,12 @@ export function engineFor(source, s) {
   const id = source === 'hover' ? s.hoverEngine : s.selectionEngine;
   return getProvider(id) || PROVIDERS[0];
 }
+
+/** provider의 모델 선택지. 저장된 값이 목록에 없으면(예전 버전 id) 그 값도 끝에 붙여 보여준다 */
+export function modelChoices(p, s) {
+  if (!p.models) return null;
+  const { key, choices } = p.models;
+  const current = s[key];
+  const known = choices.some((c) => c.value === current);
+  return { key, current, choices: known || !current ? choices : [...choices, { value: current, label: current, hint: '이전에 고른 모델' }] };
+}

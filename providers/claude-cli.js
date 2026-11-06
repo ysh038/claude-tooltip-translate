@@ -125,9 +125,15 @@ export default {
   translate,
   cacheTag: (s) => s.cliModel,
   describe: (s) => `claude -p · ${s.cliModel}`,
-  // 설정 화면에 자동으로 그려지는 provider 전용 설정
-  settings: [
-    { key: 'cliModel', label: '모델', type: 'select', choices: [['haiku', 'Haiku — 빠름 (권장)'], ['sonnet', 'Sonnet — 더 정확, 느림']] }
-  ],
+  // claude의 별칭(haiku/sonnet/opus)은 항상 그 계열의 최신 모델을 가리킨다
+  // 실측(2026-11-06, 대기 프로세스, 단어 1개): 세 모델 모두 완성 ~1.2~1.7s. Opus는 구독 사용량을 더 많이 씀
+  models: {
+    key: 'cliModel',
+    choices: [
+      { value: 'haiku', label: 'Haiku', hint: '빠름 · 구독 사용량 적음 (권장)' },
+      { value: 'sonnet', label: 'Sonnet', hint: '더 자연스러운 번역' },
+      { value: 'opus', label: 'Opus', hint: '가장 정확 · 구독 사용량 많음' }
+    ]
+  },
   help: '처음 한 번 터미널에서 프로젝트 폴더로 이동해 npm run host:install 을 실행해야 합니다. 본인 Claude 구독으로 claude -p를 호출합니다.'
 };
