@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "npm install --no-audit --no-fund && node scripts/setup.mjs",
     "build": "node scripts/build.mjs",
     "build:personal": "node scripts/build.mjs personal",
     "build:store": "node scripts/build.mjs store",
@@ -19,5 +20,10 @@
   "devDependencies": {
     "esbuild": "^0.28.2",
     "playwright": "^1.48.0"
+  },
+  "description": "웹페이지 단어에 마우스를 올리거나 드래그하면 Claude로 문맥에 맞게 번역해 주는 Chrome 확장",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   }
 }

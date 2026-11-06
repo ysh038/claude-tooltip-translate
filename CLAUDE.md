@@ -19,6 +19,9 @@ scripts/    build.mjs(esbuild → dist/<에디션>), check-store.mjs, edition-ru
 tests/      e2e.mjs, host.test.mjs, fake-claude.mjs(가짜 claude — 구독 사용량 안 씀)
 ```
 - **확장 로드는 루트가 아니라 `dist/personal`** (`npm run build:personal`, 개발 중엔 `npm run dev`로 watch)
+- **설치 = `npm run setup` 하나** (`scripts/setup.mjs`): macOS·Node 18+·claude 확인 → 개인용 빌드 → host 등록 → `dist/personal` 경로를 클립보드에 복사하고 확장 관리 페이지 열기. 업데이트도 `git pull && npm run setup`. "개발자 모드 + 압축해제된 확장 로드" 한 번은 Chrome 정책상 못 없앰
+- **GitHub 공개 저장소**: https://github.com/ysh038/claude-tooltip-translate (MIT, 2026-11-06 공개). README는 사용자용(설치·사용법·문제 해결·약관 주의), 스크린샷은 `docs/images/`
+  - 배포 관련 결정: claude -p 방식은 소스만 공개(각자 본인 구독·본인 판단, README에 약관 주의 명시). 웹 스토어 배포는 store 에디션으로만 (Chrome 내장 번역 기본값 + 본인 API 키 — docs/PLAN.md 3단계)
 - 빌드: `src/*.js`를 esbuild로 번들. background/options/popup은 ESM, content는 IIFE. `__EDITION__`은 define으로 치환, `edition:providers`는 에디션 providers만 import하는 가상 모듈 → store 번들엔 claude-cli 코드가 물리적으로 없음
 - 에디션 manifest = `src/manifest.json` + `editions/<이름>.json`의 `manifest`(permissions는 합집합) + `package.json` version
 - background: port 1개 = 요청 1개(disconnect 시 abort). 요청 `{source:'hover'|'selection', mode, text, context, title}` → `engineFor(source)`로 provider 선택 → `available()` → 캐시(키에 provider id·cacheTag 포함) → `translate()`

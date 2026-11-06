@@ -1,54 +1,132 @@
-# Claude 툴팁 번역 (Chrome 확장)
+# Claude 툴팁 번역
 
-단어에 마우스를 올리거나 텍스트를 드래그하면 Claude API로 **문맥에 맞게** 번역해 툴팁으로 보여줍니다.
+웹페이지에서 **단어에 마우스를 올리거나 문장을 드래그하면**, Claude가 앞뒤 문맥을 보고 알맞은 뜻으로 번역해 툴팁으로 보여주는 Chrome 확장입니다.
+API 키 없이 **본인의 Claude Code 구독(`claude -p`)** 으로 동작합니다.
+
+> A Chrome extension that translates the word under your cursor (or your selection) in context, using your own Claude Code subscription via `claude -p`. macOS only. UI is in Korean.
+
+| 마우스 오버 — 문맥에 맞는 뜻 | 드래그 — 자연스러운 번역 |
+|---|---|
+| ![마우스 오버 번역](docs/images/hover.png) | ![드래그 번역](docs/images/selection.png) |
+
+<img src="docs/images/popup.png" width="260" alt="툴바 팝업: 모델 선택">
+
+- **문맥 번역**: "run a quick errand"의 run은 "달리다"가 아니라 "(볼일을) 처리하다". 다른 주요 뜻도 한 줄로 함께 보여줍니다.
+- **빠름**: 미리 띄워 둔 `claude` 프로세스를 써서 보통 1~2초 안에 뜹니다. 기다리는 동안 경과 시간이 표시되고, 3초가 넘으면 안내가 나옵니다.
+- **모델 선택**: 툴바 아이콘에서 Haiku / Sonnet / Opus (각 계열의 최신 모델) 중 고를 수 있습니다.
+- 긴 글(최대 20,000자)도 드래그해서 번역할 수 있고, 같은 단어·문맥은 다시 묻지 않고 바로 보여줍니다.
+
+## 필요한 것
+
+- **macOS**
+- Chrome 계열 브라우저 (Chrome, Edge, Brave, Arc, Whale, Chromium)
+- [Node.js](https://nodejs.org) 18 이상
+- [Claude Code](https://claude.com/claude-code) 설치 + 로그인 (Pro/Max 등 Claude 구독)
+  - 설치 후 터미널에서 `claude`를 한 번 실행해 로그인해 두세요.
 
 ## 설치
-1. `npm i` 후 `npm run build:personal` (상업용은 `npm run build:store`)
-2. Chrome에서 `chrome://extensions` → 오른쪽 위 **개발자 모드** 켜기
-3. **압축해제된 확장 프로그램을 로드합니다** → `dist/personal` 폴더 선택
-   - 개발 중에는 `npm run dev`(watch)를 켜 두고, 코드 수정 후 확장 카드의 새로고침 버튼
-4. **개인용 기본 엔진은 claude -p(본인 Claude 구독)** 입니다. 처음 한 번 터미널에서:
-   ```bash
-   npm run host:install
-   ```
-   Claude Code(`claude`)가 설치·로그인되어 있어야 합니다. 그다음 확장을 새로고침하면 설정 페이지 **번역 엔진**에 "사용 가능"이 뜹니다.
-   - 터미널에서 바로 확인: `npm run host:test -- "She sat on the bank of the river."`
-   - 제거: `npm run host:uninstall`
-5. API 키를 쓰려면 설정의 **번역 엔진**을 "Claude API"로 바꾸고 API 키 입력 → **연결 테스트 · 모델 불러오기**
-   (Edge, Whale, Arc 등 Chromium 브라우저에서도 같은 방법으로 설치됩니다.)
+
+```bash
+git clone https://github.com/ysh038/claude-tooltip-translate.git
+cd claude-tooltip-translate
+npm run setup
+```
+
+`npm run setup`이 확인, 빌드, 중계 프로그램 등록까지 한 번에 하고 확장 관리 페이지를 열어 줍니다. 남은 한 단계는 브라우저에 확장을 불러오는 것입니다 (처음 한 번만).
+
+1. 확장 관리 페이지(`chrome://extensions`, Edge는 `edge://extensions`)에서 **개발자 모드**를 켭니다.
+2. **압축해제된 확장 프로그램을 로드합니다**를 누르고 `dist/personal` 폴더를 선택합니다.
+   경로는 setup이 클립보드에 복사해 둡니다. 폴더 선택 창에서 `⌘⇧G` → `⌘V` → Enter.
+3. 열려 있던 페이지를 새로고침하고 영어 단어에 마우스를 올려 보세요.
+
+### 업데이트
+
+```bash
+git pull
+npm run setup
+```
+
+그다음 확장 관리 페이지에서 확장 카드의 ↻(새로고침)을 누르면 됩니다.
 
 ## 사용법
-- **마우스 오버**: 단어 위에 마우스를 올려두면(기본 0.45초) 툴팁 표시
-  - 1줄: 문맥상 뜻 + 품사 (구동사·숙어면 표현 전체를 해석)
-  - 2줄: 다른 주요 뜻
-- **드래그**: 문장/구간을 드래그하면 자연스러운 의역으로 번역. 단어 하나만 드래그(더블클릭)하면 사전처럼 표시
-- `Esc`로 닫기, `Alt+Shift+H`로 마우스 오버 켜기/끄기 (툴바 아이콘에 OFF 표시)
 
-## 속도를 위한 설계
-- **스트리밍**: 첫 글자가 오는 즉시 표시. 문맥상 뜻이 1줄에 먼저 나오고, 다른 뜻은 그 뒤에 붙음
-- **문맥은 입력으로만**: 해당 문장(기본)만 함께 보내서 다의어를 구분. 입력 토큰은 응답 속도에 거의 영향 없음
-- **짧은 출력 제한**: 단어 모드는 최대 160 토큰
-- **캐시**: 같은 단어+같은 문맥은 다시 호출하지 않음 (브라우저 세션 동안)
-- **즉시 취소**: 다른 단어로 옮기면 이전 요청을 바로 중단 → 불필요한 비용/대기 없음
-- 툴팁 오른쪽 위 숫자 = `첫 글자 시간 / 전체 시간`
-
-## 더 빠르게 / 더 정확하게
-| 원하는 것 | 설정 |
+| 동작 | 결과 |
 |---|---|
-| 최대 속도 | Haiku 모델 · "다른 뜻 표시" 끄기 · 대기 시간 줄이기 |
-| 오역 최소 | 문맥 "앞뒤 ±350자" · Sonnet 모델 (느려짐) |
-| 실수로 뜨는 툴팁 방지 | 트리거를 "Alt 누른 채로"로 변경 |
+| 단어 위에 마우스를 올리고 잠시 멈춤 (기본 0.45초) | 1줄: 문맥상 뜻 + 품사 / 2줄: 다른 주요 뜻 |
+| 문장·문단 드래그 | 자연스러운 의역 (단어 하나만 드래그·더블클릭하면 사전처럼) |
+| `Esc` | 툴팁 닫기 |
+| `Alt+Shift+H` | 마우스 오버 번역 켜기/끄기 (툴바 아이콘에 OFF 표시) |
+
+툴팁 오른쪽 위 숫자는 번역 요청부터 걸린 시간입니다.
+
+**설정** (툴바 아이콘 → 설정 열기)
+
+- 번역할 언어 (기본: 한국어, 이미 한국어면 영어로)
+- 마우스 오버 대기 시간, `Alt`/`Shift`/`⌘`를 누른 채로만 번역하기
+- 문맥을 얼마나 함께 보낼지 (없음 / 해당 문장 / 앞뒤 ±350자)
+- 드래그하면 바로 번역 / [번역] 버튼을 눌러야 번역
+
+**모델** (툴바 아이콘 팝업)
+
+| 모델 | 특징 |
+|---|---|
+| Haiku (기본) | 빠르고 구독 사용량이 적음 |
+| Sonnet | 더 자연스러운 번역 |
+| Opus | 가장 정확, 구독 사용량이 많음 |
+
+단어 하나 기준으로는 세 모델 모두 1~2초 안팎으로 속도 차이가 크지 않았습니다 (2026-11 측정).
+
+## 문제 해결
+
+| 증상 | 해결 |
+|---|---|
+| "중계 프로그램이 설치되지 않았습니다" | `npm run setup`을 다시 실행하고 확장을 새로고침 |
+| "Native host has exited" / 연결이 끊김 | `npm run setup` 다시 실행. 그래도 안 되면 아래 로그 확인 |
+| "Claude Code에 로그인되어 있지 않습니다" | 터미널에서 `claude` 실행 후 로그인 |
+| "Claude 구독 사용 한도에 도달했습니다" | 구독 한도가 초기화될 때까지 대기, 또는 Haiku로 변경 |
+| 툴팁이 아예 안 뜸 | 확장을 불러오기 전에 열려 있던 탭은 새로고침. `chrome://` 페이지, 웹 스토어, PDF 뷰어에서는 동작하지 않음 |
+| 다른 브라우저를 새로 설치함 | `npm run setup`을 다시 실행 (실행 시점에 설치된 브라우저에만 등록됨) |
+
+로그(번역한 텍스트는 남기지 않음): `~/Library/Logs/claude-tooltip-translate/` (`host.log`, `host.stderr.log`)
+
+터미널에서 claude 연결만 따로 확인: `npm run host:test -- "She sat on the bank of the river."`
+
+## 어떻게 동작하나
+
+```
+웹페이지 ─(content script)─▶ 확장 백그라운드 ─(native messaging)─▶ 중계 프로그램 ─▶ claude -p
+```
+
+- 브라우저 확장은 직접 프로그램을 실행할 수 없어서, Chrome의 [native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)으로 작은 Node 중계 프로그램을 띄웁니다. setup이 이것을 `~/Library/Application Support/claude-tooltip-translate/`에 설치하고 브라우저에 등록합니다.
+- 중계 프로그램은 `claude -p` 프로세스를 하나 미리 띄워 두었다가 요청이 오면 바로 보내고, 답이 오면 그 프로세스를 끝내고 다음 것을 다시 띄워 둡니다. 그래서 매번 시작을 기다리지 않고, 요청끼리 대화가 쌓이지도 않습니다.
+- `claude`는 도구·MCP·사용자 설정 없이(`--tools "" --strict-mcp-config --setting-sources ""`), 빈 임시 폴더에서 번역 프롬프트로만 실행됩니다.
+- 번역하려는 텍스트와 주변 문맥은 `claude`를 통해 Anthropic으로 전송됩니다. 민감한 페이지에서는 마우스 오버 번역을 꺼 두세요(`Alt+Shift+H`).
+
+## 제거
+
+```bash
+npm run host:uninstall
+```
+
+확장 관리 페이지에서 확장도 삭제하면 끝입니다.
 
 ## 개발
+
 | 명령 | 하는 일 |
 |---|---|
+| `npm run dev` | 개인용 빌드를 watch 모드로 (`dist/personal`) |
 | `npm run build` | 모든 에디션 빌드 → `dist/<에디션>` |
-| `npm run dev` | 개인용 watch 빌드 |
-| `npm run check:store` | store 빌드에 개인용 전용 코드(claude-cli, nativeMessaging)가 없는지 검사 |
-| `npm test` | check:store + host 단위 테스트 + e2e (처음 한 번 `npx playwright install chromium`) |
-| `npm run host:install` | claude -p 중계 프로그램 등록 (개인용) |
+| `npm test` | 상업용 빌드 검사 + 중계 프로그램 테스트 + 브라우저 e2e 테스트 (처음 한 번 `npx playwright install chromium`) |
 
-## 참고
-- API 키는 `chrome.storage.local`(이 브라우저)에만 저장되고, 요청은 확장 프로그램 백그라운드에서 `api.anthropic.com`으로 직접 보냅니다.
-- 페이지에서 툴팁이 안 뜨면 확장 설치/업데이트 후 해당 탭을 새로고침하세요. `chrome://` 페이지와 Chrome 웹 스토어에서는 동작하지 않습니다(브라우저 제한).
-- PDF 뷰어 내부 텍스트는 지원하지 않습니다.
+테스트는 가짜 `claude`와 가짜 API 서버를 쓰므로 구독 사용량을 쓰지 않습니다. 구조와 결정 사항은 [CLAUDE.md](CLAUDE.md), 로드맵은 [docs/PLAN.md](docs/PLAN.md)에 있습니다.
+같은 코드에서 API 키 방식의 `store` 에디션(`npm run build:store`)도 빌드되며, 여기에는 `claude -p` 관련 코드가 들어가지 않습니다(`npm run check:store`로 검사).
+
+## 주의
+
+- **Anthropic과 관련 없는 개인 프로젝트입니다.** Claude는 Anthropic의 상표입니다.
+- 이 확장은 각자의 컴퓨터에서 각자 로그인한 공식 Claude Code(`claude -p`)를 자동으로 호출합니다. Anthropic은 구독(Free/Pro/Max) 자격 증명을 다른 제품·도구에서 쓰는 것을 제한하고 있고, 이런 자동 호출이 허용되는지는 문서에 명확하지 않습니다. 사용 전에 [Claude Code 법적 고지·약관](https://code.claude.com/docs/en/legal-and-compliance)을 직접 확인하고 본인 판단으로 사용하세요.
+- 번역할 때마다 구독 사용량을 씁니다.
+
+## 라이선스
+
+[MIT](LICENSE)
